@@ -1,0 +1,47 @@
+{
+  "name": "reveal-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for Claude and Codex that generates reveal.js presentations with transitions, fragments, auto-animate and motion, exported to standalone HTML or PDF.",
+  "type": "module",
+  "bin": {
+    "reveal-mcp": "dist/index.js"
+  },
+  "main": "dist/server.js",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc && chmod +x dist/index.js",
+    "dev": "tsc --watch",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "prepublishOnly": "npm run build",
+    "inspect": "npx @modelcontextprotocol/inspector node dist/index.js",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "reveal.js",
+    "presentation",
+    "slides",
+    "claude",
+    "codex"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "marked": "^18.1.0",
+    "puppeteer-core": "^25.12.0",
+    "reveal.js": "^6.0.2",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "typescript": "^7.0.2"
+  }
+}
