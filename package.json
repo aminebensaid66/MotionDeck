@@ -49,5 +49,14 @@
   },
   "optionalDependencies": {
     "ffmpeg-static": "^5.3.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aminebensaid66/MotionDeck.git"
+  },
+  "homepage": "https://github.com/aminebensaid66/MotionDeck#readme",
+  "bugs": {
+    "url": "https://github.com/aminebensaid66/MotionDeck/issues"
+  },
+  "author": "Amine Ben Said"
 }

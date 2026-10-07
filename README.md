@@ -25,7 +25,7 @@ Requires Node.js 18+. Screenshots, PDF and video use the Chrome, Chromium, Edge 
 Until the package is published to npm, build it from source:
 
 ```bash
-git clone <this repo> motiondeck && cd motiondeck
+git clone https://github.com/aminebensaid66/MotionDeck.git motiondeck && cd motiondeck
 npm install          # also builds dist/
 npm link             # optional: puts `motiondeck` on your PATH
 ```
