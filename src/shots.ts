@@ -21,6 +21,9 @@ export interface ShotOptions {
   only?: string[];
   /** Also lay all screenshots out on one contact-sheet image. */
   sheet?: boolean;
+  /** false = only run the layout checks, no screenshots. */
+  images?: boolean;
+  quality?: number;
 }
 
 /** Turns off every CSS transition/animation so a slide renders in its final state instantly. */
@@ -46,6 +49,8 @@ function inspectCurrentSlide(): { title: string; issues: string[] } {
   let visible = 0;
   slide.querySelectorAll("*").forEach((el) => {
     if (el.closest("aside.notes") || el.closest("script,style")) return;
+    // An SVG's drawing is clipped to its own box, so only the <svg> element itself counts.
+    if (el.tagName.toLowerCase() !== "svg" && el.closest("svg")) return;
     const r = el.getBoundingClientRect();
     if (r.width < 1 || r.height < 1) return;
     const cs = getComputedStyle(el);
@@ -83,7 +88,7 @@ function inspectCurrentSlide(): { title: string; issues: string[] } {
   const text = (slide.innerText || "").replace(/\s+/g, " ").trim();
   const bg = document.querySelector(".backgrounds .slide-background.present") as HTMLElement | null;
   const hasBg = !!bg && (bg.hasAttribute("data-background-hash") || getComputedStyle(bg).backgroundImage !== "none");
-  if (!text && !slide.querySelector("img,video,iframe,svg,canvas") && !hasBg && visible < 2) {
+  if (!text && !slide.querySelector("img,video,iframe,svg,canvas") && !hasBg && visible === 0) {
     issues.push("Slide looks empty.");
   }
   const heading = slide.querySelector("h1,h2,h3");
@@ -98,6 +103,10 @@ async function settle(page: Page) {
         img.complete ? null : new Promise((r) => { img.onload = img.onerror = r; setTimeout(r, 3000); })
       )
     );
+    const t0 = Date.now();
+    while (document.querySelector('pre.mermaid:not([data-processed="true"]):not([data-processed="error"])') && Date.now() - t0 < 8000) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   });
   await new Promise((r) => setTimeout(r, 120));
@@ -109,7 +118,7 @@ export async function screenshotSlides(
 ): Promise<{ shots: SlideShot[]; sheet?: Buffer }> {
   const imageWidth = opts.imageWidth ?? 960;
   const imageHeight = Math.round((imageWidth * opts.deckHeight) / opts.deckWidth);
-  return withDeckPage(htmlFile, { width: imageWidth, height: imageHeight }, async (page) => {
+  return withDeckPage(htmlFile, { width: imageWidth, height: imageHeight, staticMode: true }, async (page) => {
     await page.addStyleTag({ content: FREEZE_CSS });
     await page.evaluate(() =>
       Reveal.configure({
@@ -149,16 +158,19 @@ export async function screenshotSlides(
       );
       await settle(page);
       const info = await page.evaluate(inspectCurrentSlide);
-      const jpeg = Buffer.from(await page.screenshot({ type: "jpeg", quality: 80 }));
+      const jpeg =
+        opts.images === false
+          ? Buffer.alloc(0)
+          : Buffer.from(await page.screenshot({ type: "jpeg", quality: opts.quality ?? 75 }));
       shots.push({ slide: label(h, v), index: h, verticalIndex: v, title: info.title, issues: info.issues, jpeg });
     }
     if (wanted && !shots.length) throw new Error(`None of the requested slides exist: ${opts.only!.join(", ")}`);
-    return { shots, sheet: opts.sheet ? await contactSheet(page, shots) : undefined };
+    return { shots, sheet: opts.sheet && opts.images !== false ? await contactSheet(page, shots) : undefined };
   });
 }
 
 /** Lays screenshots out on one contact sheet so a whole deck fits in a single image. */
-async function contactSheet(deckPage: Page, shots: SlideShot[], cellWidth = 480): Promise<Buffer> {
+async function contactSheet(deckPage: Page, shots: SlideShot[], cellWidth = 400): Promise<Buffer> {
   const cols = shots.length <= 4 ? 2 : shots.length <= 9 ? 3 : 4;
   const cells = shots
     .map(
@@ -175,5 +187,5 @@ async function contactSheet(deckPage: Page, shots: SlideShot[], cellWidth = 480)
   const page = await deckPage.browser().newPage();
   await page.setViewport({ width, height: 400 });
   await page.setContent(html, { waitUntil: "load" });
-  return Buffer.from(await page.screenshot({ type: "jpeg", quality: 80, fullPage: true }));
+  return Buffer.from(await page.screenshot({ type: "jpeg", quality: 70, fullPage: true }));
 }

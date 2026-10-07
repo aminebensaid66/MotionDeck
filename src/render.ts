@@ -4,6 +4,11 @@ import { createRequire } from "node:module";
 import { Marked } from "marked";
 import type { BaseSlide, Deck, Slide } from "./schema.js";
 import { MOTION_CSS, LAYOUT_CSS } from "./styles.js";
+import { COMPONENT_CSS, componentRuntime, renderComponent } from "./components.js";
+import { AUTO_MOTION_CSS, PRESET_DEFS, googleFontsLink, presetCss } from "./presets.js";
+
+const DARK_THEMES = new Set(["black", "black-contrast", "league", "night", "blood", "moon", "dracula"]);
+const MERMAID_CDN = "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js";
 
 const require = createRequire(import.meta.url);
 const revealDist = path.dirname(require.resolve("reveal.js"));
@@ -68,6 +73,9 @@ class Ctx {
   constructor(public opts: RenderOptions) {}
   usesCode = false;
   usesMath = false;
+  usesComponents = false;
+  usesMermaid = false;
+  sectionBg?: string;
 
   /** Turn absolute local file paths into data URIs (inline mode) or file:// URLs. */
   url(src: string): string {
@@ -108,6 +116,10 @@ function renderSlide(slide: BaseSlide, ctx: Ctx, inner = ""): string {
   const bg = slide.background ?? {};
   a.push(attr("id", slide.id));
   const layout = slide.layout ?? "default";
+  if (layout === "section" && ctx.sectionBg && !Object.keys(bg).length) {
+    if (/gradient\(/.test(ctx.sectionBg)) a.push(attr("data-background-gradient", ctx.sectionBg));
+    else a.push(attr("data-background-color", ctx.sectionBg));
+  }
   const classes = [layout !== "default" ? `layout-${layout}` : "", slide.className ?? ""].filter(Boolean).join(" ");
   a.push(attr("class", classes || undefined));
   a.push(attr("style", slide.style));
@@ -178,6 +190,12 @@ function renderSlide(slide: BaseSlide, ctx: Ctx, inner = ""): string {
     );
   }
 
+  if (slide.component) {
+    ctx.usesComponents = true;
+    if (slide.component.type === "diagram") ctx.usesMermaid = true;
+    parts.push(renderComponent(slide.component, mdInline));
+  }
+
   for (const f of slide.fragments ?? []) {
     const tag = /^[a-z][a-z0-9-]*$/i.test(f.tag ?? "") ? f.tag! : "p";
     const effect = f.effect && f.effect !== "fade-in" ? ` ${f.effect}` : "";
@@ -208,8 +226,29 @@ const safeStyle = (css: string) => css.replace(/<\/style/gi, "<\\/style");
 export async function renderDeck(deck: Deck, opts: RenderOptions = {}): Promise<string> {
   const ctx = new Ctx(opts);
   const s = deck.settings;
+  const preset = s.preset ? PRESET_DEFS[s.preset] : undefined;
+  ctx.sectionBg = preset?.sectionBg;
   const slidesHtml = renderSlides(deck.slides, ctx);
-  const theme = s.theme ?? "black";
+  const theme = preset?.theme ?? s.theme ?? "black";
+  const dark = preset?.dark ?? DARK_THEMES.has(theme);
+  const motion = s.motion ?? preset?.motion ?? "none";
+  const fonts = [...(preset?.fonts ?? [])];
+  let brandCss = "";
+  let logoHtml = "";
+  if (s.brand) {
+    const b = s.brand;
+    const fam = (f: string) => `'${f.replace(/'/g, "")}', system-ui, sans-serif`;
+    const v: string[] = [];
+    if (b.primary) v.push(`--r-link-color: ${b.primary}; --rmcp-accent: ${b.primary}; --rmcp-c1: ${b.primary};`);
+    if (b.font) { fonts.push(`${b.font}:wght@400;600;700`); v.push(`--r-main-font: ${fam(b.font)};`); }
+    if (b.headingFont) { fonts.push(`${b.headingFont}:wght@600;700;800`); v.push(`--r-heading-font: ${fam(b.headingFont)};`); }
+    if (v.length) brandCss = `.reveal-viewport, .reveal { ${v.join(" ")} }`;
+    if (b.logo) {
+      const pos = (b.logoPosition ?? "bottom-left").split("-");
+      logoHtml = `<img class="rmcp-logo" alt="" src="${escapeHtml(ctx.url(b.logo))}" style="${pos[0]}:18px;${pos[1]}:24px">`;
+      brandCss += `\n.reveal .rmcp-logo { position: absolute; z-index: 20; height: 44px; width: auto; pointer-events: none; }`;
+    }
+  }
   const hlTheme = s.highlightTheme ?? "monokai";
 
   const plugins: { file: string; global: string; expr: string }[] = [
@@ -241,7 +280,7 @@ export async function renderDeck(deck: Deck, opts: RenderOptions = {}): Promise<
     hash: true,
     width: s.width ?? 1280,
     height: s.height ?? 720,
-    transition: s.transition ?? "slide",
+    transition: s.transition ?? preset?.transition ?? "slide",
     transitionSpeed: s.transitionSpeed,
     backgroundTransition: s.backgroundTransition,
     controls: s.controls,
@@ -272,6 +311,15 @@ export async function renderDeck(deck: Deck, opts: RenderOptions = {}): Promise<
   for (const k of Object.keys(config)) if (config[k] === undefined) delete config[k];
   const pluginExpr = plugins.map((p) => p.expr).join(", ");
 
+  let runtime = "";
+  let mermaidTag = "";
+  if (ctx.usesComponents) {
+    const local = process.env.REVEAL_MCP_MERMAID;
+    const inlineMermaid = ctx.usesMermaid && local && existsSync(local) && opts.assets !== "cdn";
+    if (inlineMermaid) mermaidTag = `<script>\n${safeScript(readFileSync(local!, "utf8"))}\n</script>`;
+    runtime = componentRuntime({ dark, mermaidSrc: MERMAID_CDN, mermaidInline: inlineMermaid ? "yes" : undefined });
+  }
+
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -282,22 +330,30 @@ export async function renderDeck(deck: Deck, opts: RenderOptions = {}): Promise<
 ${s.author ? `<meta name="author" content="${escapeHtml(s.author)}">` : ""}
 ${s.description ? `<meta name="description" content="${escapeHtml(s.description)}">` : ""}
 ${styleTags}
+${googleFontsLink(fonts)}
 <style>
 ${LAYOUT_CSS}
 ${MOTION_CSS}
+${ctx.usesComponents ? COMPONENT_CSS : ""}
+${motion !== "none" ? AUTO_MOTION_CSS : ""}
+${preset ? presetCss(preset) : ""}
+${brandCss}
 </style>
 ${s.customCss ? `<style>\n${safeStyle(s.customCss)}\n</style>` : ""}
 ${s.headHtml ?? ""}
 </head>
 <body>
-<div class="reveal">
+<div class="reveal${motion !== "none" ? ` rmcp-motion-${motion}` : ""}">
+${logoHtml}
 <div class="slides">
 ${slidesHtml}
 </div>
 </div>
 ${scriptTags}
+${mermaidTag}
 <script>
 Reveal.initialize(Object.assign(${JSON.stringify(config)}, { plugins: [${pluginExpr}] })).then(function () {
+${runtime}
   window.__revealReady = true;
 ${s.customJs ? safeScript(s.customJs) : ""}
 });

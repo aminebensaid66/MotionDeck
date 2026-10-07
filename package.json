@@ -1,6 +1,6 @@
 {
   "name": "reveal-mcp",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "MCP server for Claude and Codex that generates reveal.js presentations with transitions, fragments, auto-animate and motion, exported to standalone HTML or PDF.",
   "type": "module",
   "bin": {

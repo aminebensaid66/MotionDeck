@@ -1,0 +1,19 @@
+{
+  "title": "Q3 Product Review",
+  "preset": "aurora",
+  "slides": [
+    { "layout": "title", "title": "Q3 Product Review", "subtitle": "What we shipped, what moved, what's next", "notes": "Welcome everyone." },
+    { "title": "Q3 at a glance", "component": { "type": "stats", "items": [ { "value": "2.4M", "label": "monthly active users" }, { "value": "98.7%", "label": "uptime" }, { "value": "$1.2M", "label": "new ARR" }, { "value": 42, "label": "features shipped" } ] } },
+    { "layout": "section", "title": "Growth", "subtitle": "Where the numbers came from" },
+    { "title": "Revenue by quarter", "component": { "type": "chart", "kind": "bar", "labels": ["Q4", "Q1", "Q2", "Q3"], "series": [ { "name": "2025", "values": [320, 410, 520, 610] }, { "name": "2026", "values": [480, 590, 760, 940] } ], "unit": "k" } },
+    { "title": "Weekly signups", "component": { "type": "chart", "kind": "line", "labels": ["W1","W2","W3","W4","W5","W6"], "series": [ { "values": [120, 180, 160, 260, 340, 420] } ] } },
+    { "title": "Traffic sources", "component": { "type": "chart", "kind": "donut", "labels": ["Organic", "Referral", "Paid", "Social"], "series": [ { "values": [48, 22, 18, 12] } ] } },
+    { "title": "Roadmap", "component": { "type": "timeline", "items": [ { "date": "Jul", "title": "Teams", "text": "Shared workspaces" }, { "date": "Aug", "title": "API v2", "text": "Webhooks and SDKs" }, { "date": "Sep", "title": "Mobile", "text": "iOS and Android apps" }, { "date": "Oct", "title": "AI assist", "text": "Smart drafts" } ] } },
+    { "title": "What customers love", "component": { "type": "cards", "items": [ { "icon": "⚡", "title": "Fast", "text": "Pages load in under 200ms" }, { "icon": "🔒", "title": "Secure", "text": "SOC 2 Type II certified" }, { "icon": "🤝", "title": "Collaborative", "text": "Real-time editing for teams" } ] } },
+    { "title": "Onboarding, before and after", "component": { "type": "comparison", "left": { "title": "Before", "items": ["12 steps", "Manual data import", "40% drop-off"] }, "right": { "title": "After", "items": ["3 steps", "One-click import", "11% drop-off"] } } },
+    { "title": "How we ship", "component": { "type": "steps", "items": [ { "title": "Discover", "text": "Talk to 10 users" }, { "title": "Prototype", "text": "Clickable in 2 days" }, { "title": "Build", "text": "Behind a flag" }, { "title": "Launch", "text": "Measure and iterate" } ], "stepByStep": true } },
+    { "title": "Release pipeline", "component": { "type": "diagram", "code": "flowchart LR\n  A[Commit] --> B[CI tests]\n  B --> C{Green?}\n  C -- yes --> D[Staging]\n  C -- no --> A\n  D --> E[Production]" } },
+    { "component": { "type": "quote", "text": "It's the first tool our whole team actually enjoys using.", "author": "Dana Kim", "role": "Head of Ops, Northwind" } },
+    { "layout": "title", "title": "Thank you", "subtitle": "Questions?" }
+  ]
+}

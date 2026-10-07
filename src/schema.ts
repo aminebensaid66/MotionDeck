@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { ComponentSchema } from "./components.js";
+import { PRESETS } from "./presets.js";
 
 export const THEMES = [
   "black",
@@ -118,6 +120,7 @@ const slideShape = {
   columns: z.array(z.string()).optional().describe("For layout 'columns': markdown for each column"),
   image: z.string().optional().describe("Image URL/path for image-left/image-right layouts"),
   code: CodeSchema.optional().describe("Code block appended after content"),
+  component: ComponentSchema.optional().describe("Data-driven designed block: stats, timeline, cards, quote, comparison, steps, chart, diagram"),
   fragments: z.array(FragmentSchema).optional().describe("Items revealed one by one, appended after content"),
   listFragments: z
     .union([z.boolean(), z.enum(FRAGMENT_EFFECTS)])
@@ -156,8 +159,8 @@ const slideShape = {
     .describe("Any extra attributes for the <section>, e.g. {'data-state': 'intro'}"),
 };
 
-export const BaseSlideSchema = z.object(slideShape);
-export const SlideSchema = z.object({
+export const BaseSlideSchema = z.strictObject(slideShape);
+export const SlideSchema = z.strictObject({
   ...slideShape,
   verticalSlides: z
     .array(BaseSlideSchema)
@@ -168,7 +171,18 @@ export const SlideSchema = z.object({
 export type BaseSlide = z.infer<typeof BaseSlideSchema>;
 export type Slide = z.infer<typeof SlideSchema>;
 
+export const BrandSchema = z.strictObject({
+  primary: z.string().optional().describe("Accent color"),
+  logo: z.string().optional().describe("Logo URL or absolute path, shown in a corner of every slide"),
+  logoPosition: z.enum(["top-left", "top-right", "bottom-left", "bottom-right"]).optional(),
+  font: z.string().optional().describe("Google Font for body text"),
+  headingFont: z.string().optional().describe("Google Font for headings"),
+});
+
 export const SettingsShape = {
+  preset: z.enum(PRESETS).optional().describe("Designed look; overrides theme"),
+  motion: z.enum(["none", "subtle", "lively"]).optional().describe("Automatic entrance motion on every slide"),
+  brand: BrandSchema.optional(),
   theme: z.enum(THEMES).optional().describe("Built-in reveal.js theme (default 'black')"),
   transition: z.enum(TRANSITIONS).optional().describe("Default slide transition (default 'slide')"),
   transitionSpeed: z.enum(SPEEDS).optional(),
@@ -197,7 +211,7 @@ export const SettingsShape = {
   description: z.string().optional(),
 };
 
-export const SettingsSchema = z.object(SettingsShape);
+export const SettingsSchema = z.strictObject(SettingsShape);
 export type Settings = z.infer<typeof SettingsSchema>;
 
 export interface Deck {

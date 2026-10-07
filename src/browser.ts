@@ -45,6 +45,8 @@ export function findBrowser(): string | undefined {
 
 export interface DeckPageOptions {
   query?: string;
+  /** Tell the deck runtime to skip count-ups etc. so pages render their final state immediately. */
+  staticMode?: boolean;
   width?: number;
   height?: number;
 }
@@ -76,6 +78,7 @@ export async function withDeckPage<T>(
   try {
     const page = await browser.newPage();
     if (opts.width && opts.height) await page.setViewport({ width: opts.width, height: opts.height });
+    if (opts.staticMode) await page.evaluateOnNewDocument("window.__rmcpStatic = true");
     await page.goto(`${pathToFileURL(htmlFile).href}${opts.query ?? ""}`, { waitUntil: "load", timeout: 60_000 });
     await page.waitForFunction("window.__revealReady === true", { timeout: 60_000 });
     // Give fonts, highlight and math a moment to settle.
