@@ -46,12 +46,14 @@ test("full deck lifecycle", async (t) => {
     "create_presentation",
     "delete_presentation",
     "export_presentation",
+    "export_video",
     "get_authoring_guide",
     "get_presentation",
     "list_presentations",
     "move_slide",
     "preview_presentation",
     "remove_slide",
+    "screenshot_slides",
     "update_presentation_settings",
     "update_slide",
   ]);
@@ -151,6 +153,44 @@ test("full deck lifecycle", async (t) => {
     const pdf = await call(client, "export_presentation", { id, format: "pdf" });
     const head = readFileSync(pdf.path).subarray(0, 5).toString();
     assert.equal(head, "%PDF-");
+  }
+
+  // Screenshots: an overflowing slide must be flagged, a clean one must not.
+  await call(client, "add_slides", {
+    id,
+    slides: [{ title: "Overflow", content: Array.from({ length: 20 }, (_, i) => `- Line ${i}`).join("\n") }],
+  });
+  const shotRes = await client.callTool({ name: "screenshot_slides", arguments: { id, mode: "individual", slides: ["0", "6"] } });
+  assert.ok(!shotRes.isError, shotRes.content[0].text);
+  const shot = JSON.parse(shotRes.content[0].text);
+  assert.deepEqual(shot.slides, ["0", "6"]);
+  assert.equal(shotRes.content.filter((c) => c.type === "image").length, 2);
+  assert.equal(shot.issues.length, 1);
+  assert.equal(shot.issues[0].slide, "6");
+  assert.match(shot.issues[0].issues[0], /overflows/);
+  const sheet = await client.callTool({ name: "screenshot_slides", arguments: { id, mode: "sheet" } });
+  assert.equal(sheet.content.filter((c) => c.type === "image").length, 1);
+  assert.ok(existsSync(path.join(JSON.parse(sheet.content[0].text).savedTo, "sheet.jpg")));
+
+  if (!process.env.SKIP_VIDEO) {
+    const small = await call(client, "create_presentation", {
+      title: "Tiny video",
+      slides: [{ title: "One", fragments: [{ content: "frag" }] }, { title: "Two", duration: 600 }],
+    });
+    for (const format of ["mp4", "gif"]) {
+      const v = await call(client, "export_video", {
+        id: small.id,
+        format,
+        resolution: "720p",
+        slideDuration: 700,
+        fragmentDuration: 400,
+      });
+      assert.equal(v.steps, 3);
+      assert.ok(v.bytes > 1000);
+      const magic = readFileSync(v.path).subarray(0, 12).toString("latin1");
+      assert.ok(format === "gif" ? magic.startsWith("GIF8") : magic.includes("ftyp"), `bad ${format} header`);
+    }
+    await call(client, "delete_presentation", { id: small.id });
   }
 
   const bad = await client.callTool({ name: "get_presentation", arguments: { id: "nope-000000" } });

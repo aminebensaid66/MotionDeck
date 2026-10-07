@@ -1,15 +1,24 @@
 # reveal-mcp
 
-An MCP server that lets Claude (Claude Code, Claude Desktop) and OpenAI Codex build **reveal.js presentations with real motion**: slide transitions, fragments, auto-animate ("magic move"), built-in CSS motion classes, code walkthroughs, math, speaker notes. Decks are exported to a **single offline HTML file** or a **PDF**.
+An MCP server that lets Claude (Claude Code, Claude Desktop) and OpenAI Codex build **reveal.js presentations with real motion**: slide transitions, fragments, auto-animate ("magic move"), built-in CSS motion classes, code walkthroughs, math, speaker notes.
+
+What it adds on top of an AI writing HTML by hand:
+
+- **🎬 Video export.** It records the deck playing, with every transition and animation, to **MP4, WebM or GIF** (1080p, 720p, square or vertical). Use it for LinkedIn, YouTube, product demos or a looping GIF in a README.
+- **👀 The AI sees its own slides.** `screenshot_slides` renders the deck to images, returns them to the model and flags layout bugs: text running off the slide, code that is cut off, broken images, empty slides. The model fixes them before you ever look.
+- **📦 Portable output.** One offline HTML file with everything inlined, or a PDF.
+- **✏️ Surgical edits.** Decks are saved, so "change slide 4" only touches slide 4.
 
 ```
 You: "Make a 10-slide animated deck introducing our new API, dark theme"
-Claude → create_presentation(...) → ~/reveal-mcp/presentations/our-new-api-3f9a1c.html
+Claude → create_presentation(...)   → ~/reveal-mcp/presentations/our-new-api-3f9a1c.html
+       → screenshot_slides(...)     → sees slide 6 overflows by 120px, splits it in two
+       → export_video(format: mp4)  → ~/reveal-mcp/presentations/our-new-api-3f9a1c.mp4
 ```
 
 ## Install
 
-Requires Node.js 18+. PDF export also needs Chrome, Chromium, Edge or Brave installed (no browser is downloaded).
+Requires Node.js 18+. Screenshots, PDF and video use the Chrome, Chromium, Edge or Brave already on your machine (no browser is downloaded). Video also needs ffmpeg, which is installed automatically through the optional `ffmpeg-static` dependency. If that download is blocked, install ffmpeg yourself or point `REVEAL_MCP_FFMPEG` at it.
 
 Until the package is published to npm, build it from source:
 
@@ -61,7 +70,7 @@ or edit `~/.codex/config.toml`:
 command = "npx"
 args = ["-y", "reveal-mcp"]
 startup_timeout_sec = 60   # first npx run downloads the package
-tool_timeout_sec = 120     # PDF export can take a while on big decks
+tool_timeout_sec = 600     # video export records in real time
 ```
 
 ### Any other MCP client
@@ -77,6 +86,8 @@ It is a standard stdio server: `npx -y reveal-mcp`. Inspect it with `npm run ins
 | `update_slide` | Merge or replace fields of a slide (or of a vertical sub-slide). `null` removes a field. |
 | `remove_slide` / `move_slide` | Reorder and prune. |
 | `update_presentation_settings` | Theme, default transition, slide numbers, auto-slide, size, custom CSS/JS/head HTML. |
+| `screenshot_slides` | Renders slides (final state, all fragments shown) to images for the model, as one contact sheet or one image per slide, and lists layout issues. Images are also saved next to the deck. |
+| `export_video` | Plays the deck in a headless browser and records it to `mp4`, `webm` or `gif`. Options: resolution, fps, slideDuration, fragmentDuration, showControls. Reports progress while recording. |
 | `export_presentation` | `html` (assets inlined, works offline; or `assets: "cdn"` for a ~15 KB file) or `pdf`. |
 | `preview_presentation` | Local `http://127.0.0.1:<port>/<id>` URL that always renders the latest version. |
 | `get_presentation` / `list_presentations` / `delete_presentation` | Manage saved decks. |
@@ -105,6 +116,7 @@ Every edit re-renders `~/reveal-mcp/presentations/<id>.html`, so you can keep th
   "transition": "zoom",                    // none fade slide convex concave zoom (+ transitionIn/Out, transitionSpeed)
   "autoAnimate": true,                     // morph matching elements into the next/previous auto-animate slide
   "autoSlide": 3000,
+  "duration": 5000,                        // video export: ms this slide stays on screen
   "className": "anim-fade-up",
   "verticalSlides": [{ "title": "Drill-down" }]
 }
@@ -127,7 +139,8 @@ Themes: black, white, league, beige, sky, night, serif, simple, solarized, blood
 | Env var | Default | Purpose |
 | --- | --- | --- |
 | `REVEAL_MCP_HOME` | `~/reveal-mcp` | Where decks (`decks/*.json`) and exports (`presentations/`) live |
-| `REVEAL_MCP_CHROME` | auto-detect | Browser executable used for PDF export (`CHROME_PATH` also works) |
+| `REVEAL_MCP_CHROME` | auto-detect | Browser used for screenshots, PDF and video (`CHROME_PATH` also works) |
+| `REVEAL_MCP_FFMPEG` | auto-detect | ffmpeg used for video (`ffmpeg-static`, then `ffmpeg` on PATH) |
 | `REVEAL_MCP_PREVIEW_PORT` | random | Fixed port for `preview_presentation` |
 
 Pass env vars through your client config, for example in Codex:
@@ -140,6 +153,7 @@ REVEAL_MCP_HOME = "/Users/me/Documents/Decks"
 ## Notes
 
 - Exported HTML inlines reveal.js, its theme and plugins, so it opens offline. Theme web fonts (Google Fonts) and KaTeX for math load from the internet when available and fall back gracefully.
+- Video is recorded in real time: a 10-slide deck takes about as long to export as it takes to play, plus a few seconds of encoding. Smoothness depends on the machine. If your app times out on long videos, raise its MCP tool timeout (Codex: `tool_timeout_sec`; Claude Code: the `MCP_TOOL_TIMEOUT` environment variable, in ms).
 - `customJs` and `headHtml` are written into your own HTML file as-is; only use content you trust.
 
 ## Development
@@ -147,7 +161,7 @@ REVEAL_MCP_HOME = "/Users/me/Documents/Decks"
 ```bash
 npm install
 npm run build
-npm test          # end-to-end over stdio, including PDF export (SKIP_PDF=1 to skip)
+npm test          # end-to-end over stdio: every tool, screenshots, PDF and video (SKIP_PDF=1 / SKIP_VIDEO=1 to skip)
 npm run inspect   # MCP Inspector
 ```
 

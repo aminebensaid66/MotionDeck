@@ -138,6 +138,7 @@ function renderSlide(slide: BaseSlide, ctx: Ctx, inner = ""): string {
   a.push(attr("data-auto-animate-unmatched", slide.autoAnimateUnmatched));
   a.push(attr("data-autoslide", slide.autoSlide));
   a.push(attr("data-visibility", slide.visibility));
+  a.push(attr("data-rmcp-duration", slide.duration));
   for (const [k, v] of Object.entries(slide.attributes ?? {})) {
     if (/^[a-zA-Z_:][-a-zA-Z0-9_:.]*$/.test(k) && !/^on/i.test(k)) a.push(attr(k, v));
   }

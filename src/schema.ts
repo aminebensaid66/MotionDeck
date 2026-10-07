@@ -141,6 +141,12 @@ const slideShape = {
   autoAnimateDuration: z.number().optional().describe("Seconds"),
   autoAnimateUnmatched: z.boolean().optional(),
   autoSlide: z.number().int().optional().describe("Advance after N ms on this slide"),
+  duration: z
+    .number()
+    .int()
+    .min(200)
+    .optional()
+    .describe("Video export: how long (ms) this slide stays on screen before the next step"),
   visibility: z.enum(["hidden", "uncounted"]).optional(),
   className: z.string().optional().describe("Extra classes on the <section>"),
   style: z.string().optional().describe("Inline CSS for the <section>"),

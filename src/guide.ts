@@ -5,7 +5,13 @@ export const GUIDE = `# reveal.js authoring guide (reveal-mcp)
 ## Workflow
 1. create_presentation with a title, settings and the full list of slides. The HTML file is written immediately and its path is returned.
 2. Refine with add_slides / update_slide / remove_slide / move_slide / update_presentation_settings. Every change re-renders the HTML.
-3. preview_presentation gives a local URL; export_presentation writes standalone HTML (offline, all assets inlined) or PDF.
+3. screenshot_slides shows you the slides as images and flags layout problems (overflow, cut-off code, broken images). Fix what it reports and check again before handing the deck over.
+4. preview_presentation gives a local URL; export_presentation writes standalone HTML (offline, all assets inlined) or PDF; export_video records the deck playing, with all motion, to MP4, WebM or GIF.
+
+## Video
+- Each slide stays on screen for slideDuration (default 3000 ms) and each fragment for fragmentDuration (default 1500 ms). Override per slide with the slide's duration field (ms).
+- Motion reads best on video: auto-animate sequences, listFragments, anim-* entrance classes, background videos.
+- For social formats pick resolution "square" or "vertical" and set the deck's width/height to the same shape (1080x1080 or 1080x1920).
 
 ## Slides
 - content is Markdown by default; HTML is allowed inside Markdown. Use format:"html" for pure HTML.

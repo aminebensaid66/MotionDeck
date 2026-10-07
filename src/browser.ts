@@ -43,27 +43,59 @@ export function findBrowser(): string | undefined {
   return candidateBrowsers().find((p) => existsSync(p));
 }
 
-export async function htmlToPdf(htmlFile: string, pdfFile: string, width: number, height: number): Promise<void> {
+export interface DeckPageOptions {
+  query?: string;
+  width?: number;
+  height?: number;
+}
+
+/** Launch a headless browser, open a rendered deck file and wait until reveal.js is ready. */
+export async function withDeckPage<T>(
+  htmlFile: string,
+  opts: DeckPageOptions,
+  fn: (page: import("puppeteer-core").Page) => Promise<T>
+): Promise<T> {
   const executablePath = findBrowser();
   if (!executablePath) {
     throw new Error(
-      "PDF export needs Chrome, Chromium, Edge or Brave. Install one or set REVEAL_MCP_CHROME to its executable. " +
-        `Alternatively open ${pathToFileURL(htmlFile).href}?print-pdf in Chrome and use Print > Save as PDF.`
+      "This needs Chrome, Chromium, Edge or Brave installed. Install one or set REVEAL_MCP_CHROME to its executable."
     );
   }
   const { default: puppeteer } = await import("puppeteer-core");
   const browser = await puppeteer.launch({
     executablePath,
     headless: true,
-    args: ["--no-sandbox", "--disable-dev-shm-usage", "--allow-file-access-from-files"],
+    args: [
+      "--no-sandbox",
+      "--disable-dev-shm-usage",
+      "--allow-file-access-from-files",
+      "--hide-scrollbars",
+      "--autoplay-policy=no-user-gesture-required",
+    ],
   });
   try {
     const page = await browser.newPage();
-    await page.goto(`${pathToFileURL(htmlFile).href}?print-pdf`, { waitUntil: "load", timeout: 60_000 });
+    if (opts.width && opts.height) await page.setViewport({ width: opts.width, height: opts.height });
+    await page.goto(`${pathToFileURL(htmlFile).href}${opts.query ?? ""}`, { waitUntil: "load", timeout: 60_000 });
     await page.waitForFunction("window.__revealReady === true", { timeout: 60_000 });
     // Give fonts, highlight and math a moment to settle.
     await page.evaluate("document.fonts ? document.fonts.ready : null");
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, 300));
+    return await fn(page);
+  } finally {
+    await browser.close();
+  }
+}
+
+export async function htmlToPdf(htmlFile: string, pdfFile: string, width: number, height: number): Promise<void> {
+  if (!findBrowser()) {
+    throw new Error(
+      "PDF export needs Chrome, Chromium, Edge or Brave. Install one or set REVEAL_MCP_CHROME to its executable. " +
+        `Alternatively open ${pathToFileURL(htmlFile).href}?print-pdf in Chrome and use Print > Save as PDF.`
+    );
+  }
+  await withDeckPage(htmlFile, { query: "?print-pdf" }, async (page) => {
+    await new Promise((r) => setTimeout(r, 200));
     await page.pdf({
       path: pdfFile,
       width: `${width}px`,
@@ -72,7 +104,5 @@ export async function htmlToPdf(htmlFile: string, pdfFile: string, width: number
       preferCSSPageSize: true,
       timeout: 120_000,
     });
-  } finally {
-    await browser.close();
-  }
+  });
 }
