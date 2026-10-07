@@ -77,7 +77,7 @@ It is a standard stdio server: `npx -y reveal-mcp`. Inspect it with `npm run ins
 | `update_slide` | Merge or replace fields of a slide (or of a vertical sub-slide). `null` removes a field. |
 | `remove_slide` / `move_slide` | Reorder and prune. |
 | `update_presentation_settings` | Theme, default transition, slide numbers, auto-slide, size, custom CSS/JS/head HTML. |
-| `export_presentation` | `html` (assets inlined, works offline; or `assets: "cdn"` for a ~20 KB file) or `pdf`. |
+| `export_presentation` | `html` (assets inlined, works offline; or `assets: "cdn"` for a ~15 KB file) or `pdf`. |
 | `preview_presentation` | Local `http://127.0.0.1:<port>/<id>` URL that always renders the latest version. |
 | `get_presentation` / `list_presentations` / `delete_presentation` | Manage saved decks. |
 | `get_authoring_guide` | Cheat sheet the model reads before building ambitious decks (also exposed as resource `reveal://guide`). |
