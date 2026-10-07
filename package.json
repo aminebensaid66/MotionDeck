@@ -1,10 +1,10 @@
 {
-  "name": "reveal-mcp",
+  "name": "motiondeck",
   "version": "0.3.0",
-  "description": "MCP server for Claude and Codex that generates reveal.js presentations with transitions, fragments, auto-animate and motion, exported to standalone HTML or PDF.",
+  "description": "MCP server for Claude, Codex and any MCP client: designed, animated presentations (built on reveal.js) exported to HTML, PDF, MP4, WebM or GIF.",
   "type": "module",
   "bin": {
-    "reveal-mcp": "dist/index.js"
+    "motiondeck": "dist/index.js"
   },
   "main": "dist/server.js",
   "files": [
@@ -26,9 +26,12 @@
   "keywords": [
     "mcp",
     "model-context-protocol",
-    "reveal.js",
     "presentation",
     "slides",
+    "motion",
+    "animation",
+    "video",
+    "reveal.js",
     "claude",
     "codex"
   ],

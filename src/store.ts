@@ -5,9 +5,9 @@ import crypto from "node:crypto";
 import type { Deck } from "./schema.js";
 
 export function homeDir(): string {
-  const dir = process.env.REVEAL_MCP_HOME;
+  const dir = process.env.MOTIONDECK_HOME;
   if (dir) return path.resolve(dir.replace(/^~(?=$|[\\/])/, os.homedir()));
-  return path.join(os.homedir(), "reveal-mcp");
+  return path.join(os.homedir(), "motiondeck");
 }
 
 export const decksDir = () => path.join(homeDir(), "decks");

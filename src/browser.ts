@@ -4,7 +4,7 @@ import path from "node:path";
 import os from "node:os";
 
 function candidateBrowsers(): string[] {
-  const env = [process.env.REVEAL_MCP_CHROME, process.env.CHROME_PATH, process.env.PUPPETEER_EXECUTABLE_PATH];
+  const env = [process.env.MOTIONDECK_CHROME, process.env.CHROME_PATH, process.env.PUPPETEER_EXECUTABLE_PATH];
   const list: string[] = env.filter((p): p is string => !!p);
   if (process.platform === "darwin") {
     list.push(
@@ -60,7 +60,7 @@ export async function withDeckPage<T>(
   const executablePath = findBrowser();
   if (!executablePath) {
     throw new Error(
-      "This needs Chrome, Chromium, Edge or Brave installed. Install one or set REVEAL_MCP_CHROME to its executable."
+      "This needs Chrome, Chromium, Edge or Brave installed. Install one or set MOTIONDECK_CHROME to its executable."
     );
   }
   const { default: puppeteer } = await import("puppeteer-core");
@@ -93,7 +93,7 @@ export async function withDeckPage<T>(
 export async function htmlToPdf(htmlFile: string, pdfFile: string, width: number, height: number): Promise<void> {
   if (!findBrowser()) {
     throw new Error(
-      "PDF export needs Chrome, Chromium, Edge or Brave. Install one or set REVEAL_MCP_CHROME to its executable. " +
+      "PDF export needs Chrome, Chromium, Edge or Brave. Install one or set MOTIONDECK_CHROME to its executable. " +
         `Alternatively open ${pathToFileURL(htmlFile).href}?print-pdf in Chrome and use Print > Save as PDF.`
     );
   }

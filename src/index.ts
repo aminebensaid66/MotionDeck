@@ -8,13 +8,13 @@ if (arg === "--version" || arg === "-v") {
   process.exit(0);
 }
 if (arg === "--help" || arg === "-h") {
-  console.log(`reveal-mcp ${VERSION}
+  console.log(`motiondeck ${VERSION}
 MCP server (stdio) for creating reveal.js presentations.
 
 Environment:
-  REVEAL_MCP_HOME          Storage folder (default ~/reveal-mcp)
-  REVEAL_MCP_CHROME        Chrome/Chromium/Edge executable for PDF export
-  REVEAL_MCP_PREVIEW_PORT  Fixed port for the preview server (default random)`);
+  MOTIONDECK_HOME          Storage folder (default ~/motiondeck)
+  MOTIONDECK_CHROME        Chrome/Chromium/Edge executable for PDF export
+  MOTIONDECK_PREVIEW_PORT  Fixed port for the preview server (default random)`);
   process.exit(0);
 }
 

@@ -8,7 +8,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const home = mkdtempSync(path.join(tmpdir(), "reveal-mcp-test-"));
+const home = mkdtempSync(path.join(tmpdir(), "motiondeck-test-"));
 
 async function connect(env = {}) {
   const client = new Client({ name: "test", version: "0.0.0" });
@@ -16,7 +16,7 @@ async function connect(env = {}) {
     new StdioClientTransport({
       command: process.execPath,
       args: [path.join(root, "dist/index.js")],
-      env: { ...process.env, REVEAL_MCP_HOME: home, ...env },
+      env: { ...process.env, MOTIONDECK_HOME: home, ...env },
     })
   );
   return client;
@@ -69,7 +69,7 @@ test("full deck lifecycle", async (t) => {
       {
         layout: "title",
         title: "Motion **Demo**",
-        subtitle: "Built with reveal-mcp",
+        subtitle: "Built with motiondeck",
         content: '<p class="anim-fade-up" style="--delay:.3s">Hello</p>',
         background: { gradient: "linear-gradient(135deg, #667eea, #764ba2)" },
         notes: "Welcome everyone",
@@ -199,7 +199,7 @@ test("presets and components", async (t) => {
 });
 
 test("video export", { skip: !!process.env.SKIP_VIDEO }, async (t) => {
-  const client = await connect({ REVEAL_MCP_AUTOCHECK: "0" });
+  const client = await connect({ MOTIONDECK_AUTOCHECK: "0" });
   t.after(() => client.close());
   const small = await call(client, "create_presentation", {
     title: "Tiny video",

@@ -23,7 +23,7 @@ export async function ensurePreviewServer(): Promise<number> {
       res.writeHead(404, { "content-type": "text/plain" }).end(String(e?.message ?? e));
     }
   });
-  const wanted = Number(process.env.REVEAL_MCP_PREVIEW_PORT ?? 0);
+  const wanted = Number(process.env.MOTIONDECK_PREVIEW_PORT ?? 0);
   await new Promise<void>((resolve, reject) => {
     server!.once("error", reject);
     server!.listen(wanted, "127.0.0.1", () => resolve());

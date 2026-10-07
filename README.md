@@ -1,6 +1,6 @@
-# reveal-mcp
+# motiondeck
 
-An MCP server that lets Claude (Claude Code, Claude Desktop) and OpenAI Codex build **designed, animated reveal.js presentations** and export them as HTML, PDF or video.
+An MCP server that lets Claude (Claude Code, Claude Desktop) and OpenAI Codex build **designed, animated presentations** and export them as HTML, PDF or video. Slides are rendered with [reveal.js](https://revealjs.com).
 
 What it adds on top of an AI writing HTML by hand:
 
@@ -20,24 +20,24 @@ Claude → create_presentation(preset: "corporate", slides: [...])  → .../q3-r
 
 ## Install
 
-Requires Node.js 18+. Screenshots, PDF and video use the Chrome, Chromium, Edge or Brave already on your machine (no browser is downloaded). Video also needs ffmpeg, which is installed automatically through the optional `ffmpeg-static` dependency. If that download is blocked, install ffmpeg yourself or point `REVEAL_MCP_FFMPEG` at it.
+Requires Node.js 18+. Screenshots, PDF and video use the Chrome, Chromium, Edge or Brave already on your machine (no browser is downloaded). Video also needs ffmpeg, which is installed automatically through the optional `ffmpeg-static` dependency. If that download is blocked, install ffmpeg yourself or point `MOTIONDECK_FFMPEG` at it.
 
 Until the package is published to npm, build it from source:
 
 ```bash
-git clone <this repo> reveal-mcp && cd reveal-mcp
+git clone <this repo> motiondeck && cd motiondeck
 npm install          # also builds dist/
-npm link             # optional: puts `reveal-mcp` on your PATH
+npm link             # optional: puts `motiondeck` on your PATH
 ```
 
-Then use `node /absolute/path/to/reveal-mcp/dist/index.js` as the command in the configs below (or `reveal-mcp` if you ran `npm link`). Once published, `npx -y reveal-mcp` works everywhere.
+Then use `node /absolute/path/to/motiondeck/dist/index.js` as the command in the configs below (or `motiondeck` if you ran `npm link`). Once published, `npx -y motiondeck` works everywhere.
 
 ### Claude Code
 
 ```bash
-claude mcp add reveal -- npx -y reveal-mcp
+claude mcp add motiondeck -- npx -y motiondeck
 # from source:
-claude mcp add reveal -- node /absolute/path/to/reveal-mcp/dist/index.js
+claude mcp add motiondeck -- node /absolute/path/to/motiondeck/dist/index.js
 ```
 
 Add `--scope user` to make it available in every project.
@@ -49,9 +49,9 @@ Settings → Developer → Edit Config (`claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
-    "reveal": {
+    "motiondeck": {
       "command": "npx",
-      "args": ["-y", "reveal-mcp"]
+      "args": ["-y", "motiondeck"]
     }
   }
 }
@@ -62,22 +62,22 @@ Restart Claude Desktop. On Windows use `"command": "npx.cmd"` if `npx` is not fo
 ### OpenAI Codex (CLI and IDE extension)
 
 ```bash
-codex mcp add reveal -- npx -y reveal-mcp
+codex mcp add motiondeck -- npx -y motiondeck
 ```
 
 or edit `~/.codex/config.toml`:
 
 ```toml
-[mcp_servers.reveal]
+[mcp_servers.motiondeck]
 command = "npx"
-args = ["-y", "reveal-mcp"]
+args = ["-y", "motiondeck"]
 startup_timeout_sec = 60   # first npx run downloads the package
 tool_timeout_sec = 600     # video export records in real time
 ```
 
 ### Any other MCP client
 
-It is a standard stdio server: `npx -y reveal-mcp`. Inspect it with `npm run inspect`.
+It is a standard stdio server: `npx -y motiondeck`. Inspect it with `npm run inspect`.
 
 ## Tools
 
@@ -93,7 +93,7 @@ It is a standard stdio server: `npx -y reveal-mcp`. Inspect it with `npm run ins
 | `export_presentation` | `html`, `pdf`, `mp4`, `webm` or `gif`. Video options: `resolution`, `slideDuration`, `fragmentDuration`; reports progress while recording. |
 | `preview_presentation` | Local `http://127.0.0.1:<port>/<id>` URL that always renders the latest version. |
 | `list_presentations` / `delete_presentation` | Manage saved decks. |
-| `get_authoring_guide` | Full reference the AI reads once (also resource `reveal://guide`). |
+| `get_authoring_guide` | Full reference the AI reads once (also resource `motiondeck://guide`). |
 
 There is also a `make_presentation` prompt (topic, audience, slides, style).
 
@@ -170,7 +170,7 @@ See [`examples/components.json`](examples/components.json) for a full deck using
 - **Transitions**: deck-wide `transition` or per slide; split with `transitionIn`/`transitionOut`.
 - **Fragments**: 19 reveal.js effects (`fade-up`, `grow`, `strike`, `highlight-current-blue`, ...).
 - **Auto-animate**: consecutive `autoAnimate` slides tween position, size, color, radius, font size; match by text or `data-id`. Code blocks with the same `dataId` morph line by line.
-- **Motion classes** (added by reveal-mcp, play whenever the slide appears): `anim-fade-up/down/left/right`, `anim-zoom-in/out`, `anim-flip-in`, `anim-blur-in`, `anim-bounce-in`, `anim-shake`, `anim-float`, `anim-pulse`, `anim-spin`, `anim-gradient-text`, `anim-typewriter`, `anim-stagger`. Tune with `style="--delay:.3s; --duration:1s"`. They are disabled in PDF export and for users with reduced-motion enabled.
+- **Motion classes** (added by motiondeck, play whenever the slide appears): `anim-fade-up/down/left/right`, `anim-zoom-in/out`, `anim-flip-in`, `anim-blur-in`, `anim-bounce-in`, `anim-shake`, `anim-float`, `anim-pulse`, `anim-spin`, `anim-gradient-text`, `anim-typewriter`, `anim-stagger`. Tune with `style="--delay:.3s; --duration:1s"`. They are disabled in PDF export and for users with reduced-motion enabled.
 - **Automatic entrance motion**: `settings.motion` = `subtle` or `lively` animates every slide's heading and content in (presets turn it on).
 - **Escape hatches**: `customCss` (your own keyframes, fonts, `--r-*` theme variables), `headHtml` + `customJs` (e.g. load GSAP and hook `Reveal.on('slidechanged', ...)`).
 
@@ -182,18 +182,18 @@ Themes: black, white, league, beige, sky, night, serif, simple, solarized, blood
 
 | Env var | Default | Purpose |
 | --- | --- | --- |
-| `REVEAL_MCP_HOME` | `~/reveal-mcp` | Where decks (`decks/*.json`) and exports (`presentations/`) live |
-| `REVEAL_MCP_CHROME` | auto-detect | Browser used for screenshots, PDF and video (`CHROME_PATH` also works) |
-| `REVEAL_MCP_FFMPEG` | auto-detect | ffmpeg used for video (`ffmpeg-static`, then `ffmpeg` on PATH) |
-| `REVEAL_MCP_PREVIEW_PORT` | random | Fixed port for `preview_presentation` |
-| `REVEAL_MCP_AUTOCHECK` | `1` | Set `0` to skip the automatic layout check after each edit (it takes 1-3 s) |
-| `REVEAL_MCP_MERMAID` | CDN | Path to a local `mermaid.min.js` to inline, so diagrams work offline |
+| `MOTIONDECK_HOME` | `~/motiondeck` | Where decks (`decks/*.json`) and exports (`presentations/`) live |
+| `MOTIONDECK_CHROME` | auto-detect | Browser used for screenshots, PDF and video (`CHROME_PATH` also works) |
+| `MOTIONDECK_FFMPEG` | auto-detect | ffmpeg used for video (`ffmpeg-static`, then `ffmpeg` on PATH) |
+| `MOTIONDECK_PREVIEW_PORT` | random | Fixed port for `preview_presentation` |
+| `MOTIONDECK_AUTOCHECK` | `1` | Set `0` to skip the automatic layout check after each edit (it takes 1-3 s) |
+| `MOTIONDECK_MERMAID` | CDN | Path to a local `mermaid.min.js` to inline, so diagrams work offline |
 
 Pass env vars through your client config, for example in Codex:
 
 ```toml
-[mcp_servers.reveal.env]
-REVEAL_MCP_HOME = "/Users/me/Documents/Decks"
+[mcp_servers.motiondeck.env]
+MOTIONDECK_HOME = "/Users/me/Documents/Decks"
 ```
 
 ## Notes

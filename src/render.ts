@@ -314,7 +314,7 @@ export async function renderDeck(deck: Deck, opts: RenderOptions = {}): Promise<
   let runtime = "";
   let mermaidTag = "";
   if (ctx.usesComponents) {
-    const local = process.env.REVEAL_MCP_MERMAID;
+    const local = process.env.MOTIONDECK_MERMAID;
     const inlineMermaid = ctx.usesMermaid && local && existsSync(local) && opts.assets !== "cdn";
     if (inlineMermaid) mermaidTag = `<script>\n${safeScript(readFileSync(local!, "utf8"))}\n</script>`;
     runtime = componentRuntime({ dark, mermaidSrc: MERMAID_CDN, mermaidInline: inlineMermaid ? "yes" : undefined });
@@ -325,7 +325,7 @@ export async function renderDeck(deck: Deck, opts: RenderOptions = {}): Promise<
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="generator" content="reveal-mcp (reveal.js ${revealVersion})">
+<meta name="generator" content="motiondeck (reveal.js ${revealVersion})">
 <title>${escapeHtml(deck.title)}</title>
 ${s.author ? `<meta name="author" content="${escapeHtml(s.author)}">` : ""}
 ${s.description ? `<meta name="description" content="${escapeHtml(s.description)}">` : ""}

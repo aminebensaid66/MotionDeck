@@ -1,7 +1,7 @@
 import { FRAGMENT_EFFECTS, MOTION_CLASSES, THEMES, TRANSITIONS } from "./schema.js";
 import { PRESETS, PRESET_DEFS } from "./presets.js";
 
-export const GUIDE = `# reveal-mcp guide
+export const GUIDE = `# motiondeck guide
 
 ## Workflow (cheap and high quality)
 1. Pick a preset. Plan 8-14 slides: one idea each.

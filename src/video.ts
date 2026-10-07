@@ -29,7 +29,7 @@ export interface VideoResult {
 }
 
 export function findFfmpeg(): string | undefined {
-  const fromEnv = process.env.REVEAL_MCP_FFMPEG;
+  const fromEnv = process.env.MOTIONDECK_FFMPEG;
   if (fromEnv && existsSync(fromEnv)) return fromEnv;
   try {
     const p = createRequire(import.meta.url)("ffmpeg-static") as string | null;
@@ -79,7 +79,7 @@ export async function recordVideo(htmlFile: string, outFile: string, opts: Video
   const ffmpeg = findFfmpeg();
   if (!ffmpeg) {
     throw new Error(
-      "Video export needs ffmpeg. Install it (brew install ffmpeg / apt install ffmpeg / winget install ffmpeg) or set REVEAL_MCP_FFMPEG to its path."
+      "Video export needs ffmpeg. Install it (brew install ffmpeg / apt install ffmpeg / winget install ffmpeg) or set MOTIONDECK_FFMPEG to its path."
     );
   }
   const width = opts.width ?? 1920;
@@ -87,7 +87,7 @@ export async function recordVideo(htmlFile: string, outFile: string, opts: Video
   const fps = opts.fps ?? 30;
   const slideMs = opts.slideDuration ?? 3000;
   const fragmentMs = opts.fragmentDuration ?? 1500;
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "reveal-mcp-video-"));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "motiondeck-video-"));
 
   try {
     const frames: { file: string; t: number }[] = [];

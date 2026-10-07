@@ -48,7 +48,7 @@ async function writeHtml(deck: Deck, file = path.join(exportsDir(), `${deck.id}.
 }
 
 async function withTempHtml<T>(deck: Deck, fn: (file: string) => Promise<T>): Promise<T> {
-  const tmp = path.join(os.tmpdir(), `reveal-mcp-${deck.id}-${process.pid}-${Date.now()}.html`);
+  const tmp = path.join(os.tmpdir(), `motiondeck-${deck.id}-${process.pid}-${Date.now()}.html`);
   await writeHtml(deck, tmp, "inline");
   try {
     return await fn(tmp);
@@ -73,7 +73,7 @@ function labels(slides: Slide[], from = 0, to = slides.length): string[] {
 
 /** Text-only layout check of the given slides, so the model learns about problems without spending image tokens. */
 async function autoCheck(deck: Deck, only: string[]) {
-  if (process.env.REVEAL_MCP_AUTOCHECK === "0" || !only.length || !findBrowser()) return undefined;
+  if (process.env.MOTIONDECK_AUTOCHECK === "0" || !only.length || !findBrowser()) return undefined;
   try {
     const { shots } = await withTempHtml(deck, (file) =>
       screenshotSlides(file, {
@@ -137,7 +137,7 @@ const settingsArg = z
 
 export function createServer(): McpServer {
   const server = new McpServer(
-    { name: "reveal-mcp", version: VERSION },
+    { name: "motiondeck", version: VERSION },
     {
       instructions:
         "Builds animated reveal.js decks and exports HTML, PDF or video. Read get_authoring_guide once, then create the whole deck in one create_presentation call using a preset and components (they look designed and cost few tokens). Edits return layoutIssues; fix them. Use screenshot_slides only when you need to see the design. Tell the user the htmlPath.",
@@ -423,7 +423,7 @@ export function createServer(): McpServer {
 
   server.registerResource(
     "authoring-guide",
-    "reveal://guide",
+    "motiondeck://guide",
     { title: "reveal.js authoring guide", mimeType: "text/markdown" },
     async (uri) => ({ contents: [{ uri: uri.href, mimeType: "text/markdown", text: GUIDE }] })
   );
