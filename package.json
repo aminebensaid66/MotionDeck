@@ -1,7 +1,7 @@
 {
   "name": "motiondeck",
-  "version": "0.3.0",
-  "description": "MCP server for Claude, Codex and any MCP client: designed, animated presentations (built on reveal.js) exported to HTML, PDF, MP4, WebM or GIF.",
+  "version": "0.4.0",
+  "description": "Secure-by-default MCP server for Claude, Codex and any MCP client: designed, animated presentations (built on reveal.js) exported to HTML, PDF, MP4, WebM or GIF.",
   "type": "module",
   "bin": {
     "motiondeck": "dist/index.js"
@@ -10,10 +10,12 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "SECURITY.md",
+    "DEPLOYMENT.md"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "scripts": {
     "build": "tsc && chmod +x dist/index.js",
@@ -21,7 +23,9 @@
     "test": "npm run build && node --test test/*.test.mjs",
     "prepublishOnly": "npm run build",
     "inspect": "npx @modelcontextprotocol/inspector node dist/index.js",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "test:security": "npm run build && node --test test/security.test.mjs",
+    "doctor": "node dist/index.js doctor"
   },
   "keywords": [
     "mcp",
@@ -41,10 +45,12 @@
     "marked": "^18.1.0",
     "puppeteer-core": "^25.12.0",
     "reveal.js": "^6.0.2",
+    "sanitize-html": "^2.18.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",
+    "@types/sanitize-html": "^2.16.2",
     "typescript": "^7.0.2"
   },
   "optionalDependencies": {

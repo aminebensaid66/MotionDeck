@@ -16,7 +16,12 @@ async function connect(env = {}) {
     new StdioClientTransport({
       command: process.execPath,
       args: [path.join(root, "dist/index.js")],
-      env: { ...process.env, MOTIONDECK_HOME: home, ...env },
+      env: {
+        ...process.env,
+        MOTIONDECK_HOME: home,
+        ...(typeof process.getuid === "function" && process.getuid() === 0 ? { MOTIONDECK_NO_SANDBOX: "1" } : {}),
+        ...env,
+      },
     })
   );
   return client;
@@ -162,7 +167,8 @@ test("full deck lifecycle", async (t) => {
     const pdf = await call(client, "export_presentation", { id, format: "pdf" });
     assert.equal(readFileSync(pdf.path).subarray(0, 5).toString(), "%PDF-");
   }
-  const exported = await call(client, "export_presentation", { id, format: "html", outputPath: path.join(home, "out", "x.html") });
+  const exported = await call(client, "export_presentation", { id, format: "html", outputPath: "out/x.html" });
+  assert.equal(exported.path, path.join(home, "presentations", "out", "x.html"));
   assert.ok(existsSync(exported.path));
 
   const missing = await client.callTool({ name: "get_presentation", arguments: { id: "nope-000000" } });

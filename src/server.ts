@@ -1,18 +1,21 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import crypto from "node:crypto";
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { BaseSlideSchema, SettingsSchema, SlideSchema, type Deck, type Slide } from "./schema.js";
-import { deleteDeck, exportsDir, homeDir, listDecks, loadDeck, newId, saveDeck } from "./store.js";
+import { deleteDeck, exportsDir, listDecks, loadDeck, newId, saveDeck } from "./store.js";
 import { renderDeck, revealVersion, type AssetMode } from "./render.js";
 import { findBrowser, htmlToPdf } from "./browser.js";
 import { ensurePreviewServer } from "./preview.js";
 import { screenshotSlides } from "./shots.js";
 import { recordVideo } from "./video.js";
 import { GUIDE } from "./guide.js";
+import { assertSafeDeck, securityMode, unrestrictedOutputAllowed } from "./security.js";
+import { VERSION } from "./version.js";
 
-export const VERSION = "0.3.0";
+export { VERSION } from "./version.js";
 
 const ok = (data: unknown) => ({
   content: [{ type: "text" as const, text: typeof data === "string" ? data : JSON.stringify(data) }],
@@ -37,14 +40,80 @@ function wrap<A>(fn: (args: A) => Promise<unknown>) {
   };
 }
 
-function resolveOut(p: string): string {
-  return path.resolve(p.replace(/^~(?=$|[\\/])/, os.homedir()));
+function isWithin(root: string, candidate: string): boolean {
+  const rel = path.relative(root, candidate);
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
 }
 
-async function writeHtml(deck: Deck, file = path.join(exportsDir(), `${deck.id}.html`), assets: AssetMode = "inline") {
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(file, await renderDeck(deck, { assets }));
-  return file;
+async function resolveExportOut(p: string): Promise<string> {
+  const expanded = p.replace(/^~(?=$|[\\/])/, os.homedir());
+  if (unrestrictedOutputAllowed()) return path.resolve(expanded);
+
+  const root = path.resolve(exportsDir());
+  await fs.mkdir(root, { recursive: true, mode: 0o700 });
+  const rootStat = await fs.lstat(root);
+  if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) {
+    throw new Error("The presentation export directory must be a real directory, not a symbolic link.");
+  }
+  const rootReal = await fs.realpath(root);
+  const candidate = path.isAbsolute(expanded) ? path.resolve(expanded) : path.resolve(root, expanded);
+  if (!isWithin(root, candidate)) {
+    throw new Error(
+      `outputPath must stay inside ${root} while unrestricted output is disabled. Use a relative path, or enable trusted mode plus MOTIONDECK_UNRESTRICTED_OUTPUT=1.`
+    );
+  }
+
+  const relative = path.relative(root, candidate);
+  const relativeParent = path.dirname(relative);
+  let parentReal = rootReal;
+  if (relativeParent !== ".") {
+    for (const segment of relativeParent.split(path.sep)) {
+      if (!segment || segment === ".") continue;
+      const next = path.join(parentReal, segment);
+      try {
+        const stat = await fs.lstat(next);
+        if (stat.isSymbolicLink()) throw new Error("outputPath cannot traverse symbolic-link directories in restricted mode.");
+        if (!stat.isDirectory()) throw new Error("outputPath parent contains a non-directory path component.");
+        parentReal = await fs.realpath(next);
+        if (!isWithin(rootReal, parentReal)) throw new Error("outputPath resolves outside the export directory.");
+      } catch (e: any) {
+        if (e?.code !== "ENOENT") throw e;
+        await fs.mkdir(next, { mode: 0o700 });
+        parentReal = next;
+      }
+    }
+  }
+
+  const resolved = path.join(parentReal, path.basename(candidate));
+  try {
+    const existing = await fs.lstat(resolved);
+    if (existing.isSymbolicLink()) throw new Error("outputPath cannot be a symbolic link in restricted mode.");
+    if (existing.isDirectory()) throw new Error("outputPath points to a directory, not a file.");
+  } catch (e: any) {
+    if (e?.code !== "ENOENT") throw e;
+  }
+  return resolved;
+}
+
+
+function temporarySibling(target: string): string {
+  const ext = path.extname(target);
+  const base = path.basename(target, ext);
+  return path.join(path.dirname(target), `.${base}.${process.pid}.${crypto.randomBytes(6).toString("hex")}.tmp${ext}`);
+}
+
+async function writeHtml(deck: Deck, file?: string, assets: AssetMode = "inline") {
+  assertSafeDeck(deck);
+  const target = file ?? await resolveExportOut(`${deck.id}.html`);
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  const tmp = temporarySibling(target);
+  try {
+    await fs.writeFile(tmp, await renderDeck(deck, { assets }), { mode: 0o600, flag: "wx" });
+    await fs.rename(tmp, target);
+    return target;
+  } finally {
+    await fs.rm(tmp, { force: true }).catch(() => {});
+  }
 }
 
 async function withTempHtml<T>(deck: Deck, fn: (file: string) => Promise<T>): Promise<T> {
@@ -92,6 +161,7 @@ async function autoCheck(deck: Deck, only: string[]) {
 }
 
 async function commit(deck: Deck, changed?: string[]) {
+  assertSafeDeck(deck);
   await saveDeck(deck);
   const file = await writeHtml(deck);
   const issues = await autoCheck(deck, changed ?? labels(deck.slides));
@@ -129,7 +199,7 @@ const slideArg = z.string().describe('"3" = top-level slide 3 (0-based); "3.1" =
 const slidesArg = z
   .array(z.record(z.string(), z.unknown()))
   .describe(
-    "Slide objects. Fields: title, subtitle, content (markdown/HTML), layout (title|section|center|columns|image-left|image-right|fullscreen), columns, image, component ({type:stats|timeline|cards|quote|comparison|steps|chart|diagram,...}), code, listFragments, fragments, notes, background, transition, autoAnimate, duration, className, verticalSlides. Full reference: get_authoring_guide."
+    "Slide objects. Fields: title, subtitle, content (Markdown; raw HTML requires trusted mode), layout (title|section|center|columns|image-left|image-right|fullscreen), columns, image, component ({type:stats|timeline|cards|quote|comparison|steps|chart|diagram,...}), code, listFragments, fragments, notes, background, transition, autoAnimate, duration, className, verticalSlides. Full reference: get_authoring_guide."
   );
 const settingsArg = z
   .record(z.string(), z.unknown())
@@ -140,7 +210,7 @@ export function createServer(): McpServer {
     { name: "motiondeck", version: VERSION },
     {
       instructions:
-        "Builds animated reveal.js decks and exports HTML, PDF or video. Read get_authoring_guide once, then create the whole deck in one create_presentation call using a preset and components (they look designed and cost few tokens). Edits return layoutIssues; fix them. Use screenshot_slides only when you need to see the design. Tell the user the htmlPath.",
+        `Builds animated reveal.js decks and exports HTML, PDF or video. Security mode: ${securityMode()}. Read get_authoring_guide once, then create the whole deck in one create_presentation call using a preset and components. Edits return layoutIssues; fix them. Use screenshot_slides only when needed. Tell the user the htmlPath.`,
     }
   );
 
@@ -314,18 +384,20 @@ export function createServer(): McpServer {
             images: images !== "none",
           })
         );
-        const dir = path.join(exportsDir(), `${deck.id}-screenshots`);
+        let dir: string | undefined;
         if (images !== "none") {
+          // Resolve a sentinel file so the screenshot directory gets the same symlink/path confinement as exports.
+          dir = path.dirname(await resolveExportOut(`${deck.id}-screenshots/.rmcp`));
           await fs.rm(dir, { recursive: true, force: true });
-          await fs.mkdir(dir, { recursive: true });
-          await Promise.all(result.shots.map((s) => fs.writeFile(path.join(dir, `slide-${s.slide}.jpg`), s.jpeg)));
-          if (result.sheet) await fs.writeFile(path.join(dir, "sheet.jpg"), result.sheet);
+          await fs.mkdir(dir, { recursive: true, mode: 0o700 });
+          await Promise.all(result.shots.map((s) => fs.writeFile(path.join(dir!, `slide-${s.slide}.jpg`), s.jpeg, { mode: 0o600 })));
+          if (result.sheet) await fs.writeFile(path.join(dir, "sheet.jpg"), result.sheet, { mode: 0o600 });
         }
         const issues = result.shots.filter((s) => s.issues.length).map((s) => ({ slide: s.slide, issues: s.issues }));
         const summary = {
           checked: result.shots.map((s) => s.slide),
           layoutIssues: issues.length ? issues : "none",
-          ...(images !== "none" ? { savedTo: dir } : {}),
+          ...(dir ? { savedTo: dir } : {}),
         };
         const imgs =
           images === "sheet" && result.sheet
@@ -353,7 +425,7 @@ export function createServer(): McpServer {
       inputSchema: {
         id: idArg,
         format: z.enum(["html", "pdf", "mp4", "webm", "gif"]),
-        outputPath: z.string().optional(),
+        outputPath: z.string().optional().describe("file name or relative path inside the presentations folder"),
         resolution: z.enum(["720p", "1080p", "square", "vertical"]).optional().describe("video; default 1080p"),
         slideDuration: z.number().int().min(500).max(60000).optional().describe("video ms per slide; default 3000"),
         fragmentDuration: z.number().int().min(200).max(30000).optional().describe("video ms per fragment; default 1500"),
@@ -362,32 +434,44 @@ export function createServer(): McpServer {
     async ({ id, format, outputPath, resolution = "1080p", slideDuration, fragmentDuration }, extra) => {
       try {
         const deck = await loadDeck(id);
-        const out = outputPath ? resolveOut(outputPath) : path.join(exportsDir(), `${deck.id}.${format}`);
+        const out = await resolveExportOut(outputPath ?? `${deck.id}.${format}`);
         await fs.mkdir(path.dirname(out), { recursive: true });
         let videoInfo = {};
         if (format === "html") {
           await writeHtml(deck, out, "inline");
         } else if (format === "pdf") {
-          await withTempHtml(deck, (file) => htmlToPdf(file, out, deck.settings.width ?? 1280, deck.settings.height ?? 720));
+          const tmpOut = temporarySibling(out);
+          try {
+            await withTempHtml(deck, (file) => htmlToPdf(file, tmpOut, deck.settings.width ?? 1280, deck.settings.height ?? 720));
+            await fs.rename(tmpOut, out);
+          } finally {
+            await fs.rm(tmpOut, { force: true }).catch(() => {});
+          }
         } else {
           const size = { "720p": [1280, 720], "1080p": [1920, 1080], square: [1080, 1080], vertical: [1080, 1920] }[resolution];
           const token = extra?._meta?.progressToken;
-          const r = await withTempHtml(deck, (file) =>
-            recordVideo(file, out, {
-              format,
-              width: size[0],
-              height: size[1],
-              slideDuration,
-              fragmentDuration,
-              onProgress: (progress, total, message) => {
-                if (token === undefined) return;
-                extra
-                  .sendNotification({ method: "notifications/progress", params: { progressToken: token, progress, total, message } })
-                  .catch(() => {});
-              },
-            })
-          );
-          videoInfo = { seconds: r.seconds, steps: r.steps };
+          const tmpOut = temporarySibling(out);
+          try {
+            const r = await withTempHtml(deck, (file) =>
+              recordVideo(file, tmpOut, {
+                format,
+                width: size[0],
+                height: size[1],
+                slideDuration,
+                fragmentDuration,
+                onProgress: (progress, total, message) => {
+                  if (token === undefined) return;
+                  extra
+                    .sendNotification({ method: "notifications/progress", params: { progressToken: token, progress, total, message } })
+                    .catch(() => {});
+                },
+              })
+            );
+            await fs.rename(tmpOut, out);
+            videoInfo = { seconds: r.seconds, steps: r.steps };
+          } finally {
+            await fs.rm(tmpOut, { force: true }).catch(() => {});
+          }
         }
         const { size: bytes } = await fs.stat(out);
         return ok({ path: out, bytes, ...videoInfo });
@@ -418,7 +502,7 @@ export function createServer(): McpServer {
       inputSchema: {},
       annotations: { readOnlyHint: true },
     },
-    async () => ok(`${GUIDE}\n(reveal.js ${revealVersion})`)
+    async () => ok(`${GUIDE}\n\nSecurity mode: ${securityMode()}. In safe mode HTML is sanitized and customJs, headHtml, background iframes, url()/@import in CSS, non-image local files and exports outside the presentation directory are blocked.\n(reveal.js ${revealVersion})`)
   );
 
   server.registerResource(

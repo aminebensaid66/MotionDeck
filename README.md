@@ -20,7 +20,7 @@ Claude → create_presentation(preset: "corporate", slides: [...])  → .../q3-r
 
 ## Install
 
-Requires Node.js 18+. Screenshots, PDF and video use the Chrome, Chromium, Edge or Brave already on your machine (no browser is downloaded). Video also needs ffmpeg, which is installed automatically through the optional `ffmpeg-static` dependency. If that download is blocked, install ffmpeg yourself or point `MOTIONDECK_FFMPEG` at it.
+Requires Node.js 22+. Screenshots, PDF and video use the Chrome, Chromium, Edge or Brave already on your machine (no browser is downloaded). Video also needs ffmpeg, which is installed automatically through the optional `ffmpeg-static` dependency. If that download is blocked, install ffmpeg yourself or point `MOTIONDECK_FFMPEG` at it.
 
 Until the package is published to npm, build it from source:
 
@@ -90,7 +90,7 @@ It is a standard stdio server: `npx -y motiondeck`. Inspect it with `npm run ins
 | `update_settings` | Merge deck settings (preset, theme, motion, brand, transition, size, custom CSS/JS…) or rename. |
 | `get_presentation` | Compact outline by default; one slide or the full deck on request. |
 | `screenshot_slides` | Slides as images in their final state plus layout checks. `images`: `sheet` (one overview image, default), `each`, or `none`. Images are also saved next to the deck. |
-| `export_presentation` | `html`, `pdf`, `mp4`, `webm` or `gif`. Video options: `resolution`, `slideDuration`, `fragmentDuration`; reports progress while recording. |
+| `export_presentation` | `html`, `pdf`, `mp4`, `webm` or `gif`, saved in `~/motiondeck/presentations` (`outputPath` is relative to it). Video options: `resolution`, `slideDuration`, `fragmentDuration`; reports progress while recording. |
 | `preview_presentation` | Local `http://127.0.0.1:<port>/<id>` URL that always renders the latest version. |
 | `list_presentations` / `delete_presentation` | Manage saved decks. |
 | `get_authoring_guide` | Full reference the AI reads once (also resource `motiondeck://guide`). |
@@ -145,16 +145,16 @@ See [`examples/components.json`](examples/components.json) for a full deck using
 {
   "title": "Agenda",
   "subtitle": "optional",
-  "content": "- Markdown **or** HTML\n- ```js [1|2-3]``` fences step through lines",
+  "content": "- Markdown **or** HTML (sanitized)\n- ```js [1|2-3]``` fences step through lines",
   "format": "markdown",                    // or "html"
   "layout": "default",                     // title | section | center | columns | image-left | image-right | fullscreen
   "columns": ["### Left", "### Right"],    // with layout "columns"
-  "image": "/abs/path/or/url.png",         // with image-left / image-right (local files are embedded)
+  "image": "/abs/path/or/https-url.png",   // with image-left / image-right (local files are embedded)
   "code": { "code": "...", "language": "ts", "lineNumbers": "|1-3|5", "dataId": "snippet" },
   "fragments": [{ "content": "Revealed later", "effect": "highlight-red", "index": 2 }],
   "listFragments": "fade-up",              // reveal every bullet one by one
   "notes": "Speaker notes (press S)",
-  "background": { "gradient": "linear-gradient(135deg,#667eea,#764ba2)" }, // color | image | video | iframe, opacity, size
+  "background": { "gradient": "linear-gradient(135deg,#667eea,#764ba2)" }, // color | image | video, opacity, size
   "transition": "zoom",                    // none fade slide convex concave zoom (+ transitionIn/Out, transitionSpeed)
   "autoAnimate": true,                     // morph matching elements into the next/previous auto-animate slide
   "autoSlide": 3000,
@@ -172,7 +172,7 @@ See [`examples/components.json`](examples/components.json) for a full deck using
 - **Auto-animate**: consecutive `autoAnimate` slides tween position, size, color, radius, font size; match by text or `data-id`. Code blocks with the same `dataId` morph line by line.
 - **Motion classes** (added by motiondeck, play whenever the slide appears): `anim-fade-up/down/left/right`, `anim-zoom-in/out`, `anim-flip-in`, `anim-blur-in`, `anim-bounce-in`, `anim-shake`, `anim-float`, `anim-pulse`, `anim-spin`, `anim-gradient-text`, `anim-typewriter`, `anim-stagger`. Tune with `style="--delay:.3s; --duration:1s"`. They are disabled in PDF export and for users with reduced-motion enabled.
 - **Automatic entrance motion**: `settings.motion` = `subtle` or `lively` animates every slide's heading and content in (presets turn it on).
-- **Escape hatches**: `customCss` (your own keyframes, fonts, `--r-*` theme variables), `headHtml` + `customJs` (e.g. load GSAP and hook `Reveal.on('slidechanged', ...)`).
+- **Escape hatches**: `customCss` (your own keyframes, fonts, `--r-*` theme variables). In trusted mode also `headHtml` + `customJs` (e.g. load GSAP and hook `Reveal.on('slidechanged', ...)`) and iframe backgrounds.
 
 See [`examples/showcase.json`](examples/showcase.json) for a deck that uses most of these; pass it straight to `create_presentation`.
 
@@ -188,6 +188,7 @@ Themes: black, white, league, beige, sky, night, serif, simple, solarized, blood
 | `MOTIONDECK_PREVIEW_PORT` | random | Fixed port for `preview_presentation` |
 | `MOTIONDECK_AUTOCHECK` | `1` | Set `0` to skip the automatic layout check after each edit (it takes 1-3 s) |
 | `MOTIONDECK_MERMAID` | CDN | Path to a local `mermaid.min.js` to inline, so diagrams work offline |
+| `MOTIONDECK_SECURITY_MODE` | `safe` | `safe`, `strict` or `trusted`; see [Security](#security) |
 
 Pass env vars through your client config, for example in Codex:
 
@@ -196,11 +197,21 @@ Pass env vars through your client config, for example in Codex:
 MOTIONDECK_HOME = "/Users/me/Documents/Decks"
 ```
 
+## Security
+
+A deck is written by an AI that may have read untrusted documents, so motiondeck runs in **safe mode** by default:
+
+- HTML in slides is sanitized: layout and motion markup stay, scripts, event handlers and iframes are removed.
+- `customJs`, `headHtml`, iframe backgrounds and `url()`/`@import` in CSS are rejected.
+- Images and videos can be any `https://` URL or a local file whose contents really are an image or video, so a deck can't embed something like an SSH key.
+- Exports stay inside `~/motiondeck/presentations`, the HTML has a strict Content-Security-Policy, and headless Chrome keeps its sandbox.
+
+Set `MOTIONDECK_SECURITY_MODE=strict` to also limit remote assets to an allowlist and local files to an assets folder, or `trusted` to turn the checks off for content you wrote yourself. Details in [SECURITY.md](SECURITY.md) and [DEPLOYMENT.md](DEPLOYMENT.md). Run `npx -y motiondeck doctor` to check an install.
+
 ## Notes
 
 - Exported HTML inlines reveal.js, its theme and plugins, so it opens offline. Web fonts (Google Fonts), KaTeX for math and Mermaid for diagrams load from the internet when available; fonts fall back to system fonts.
 - Video is recorded in real time: a 10-slide deck takes about as long to export as it takes to play, plus a few seconds of encoding. Smoothness depends on the machine. If your app times out on long videos, raise its MCP tool timeout (Codex: `tool_timeout_sec`; Claude Code: the `MCP_TOOL_TIMEOUT` environment variable, in ms).
-- `customJs` and `headHtml` are written into your own HTML file as-is; only use content you trust.
 
 ## Development
 

@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
-import type { Deck } from "./schema.js";
+import { DeckSchema, type Deck } from "./schema.js";
 
 export function homeDir(): string {
   const dir = process.env.MOTIONDECK_HOME;
@@ -12,6 +12,21 @@ export function homeDir(): string {
 
 export const decksDir = () => path.join(homeDir(), "decks");
 export const exportsDir = () => path.join(homeDir(), "presentations");
+
+async function ensureDecksDir(): Promise<string> {
+  const dir = decksDir();
+  await fs.mkdir(dir, { recursive: true, mode: 0o700 });
+  const stat = await fs.lstat(dir);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    throw new Error("The deck storage directory must be a real directory, not a symbolic link.");
+  }
+  return dir;
+}
+
+async function assertRegularDeckFile(file: string): Promise<void> {
+  const stat = await fs.lstat(file);
+  if (stat.isSymbolicLink() || !stat.isFile()) throw new Error("Deck files must be regular files, not symbolic links.");
+}
 
 function slugify(s: string): string {
   return (
@@ -35,17 +50,26 @@ function deckPath(id: string): string {
 }
 
 export async function saveDeck(deck: Deck): Promise<void> {
-  await fs.mkdir(decksDir(), { recursive: true });
+  await ensureDecksDir();
   deck.updatedAt = new Date().toISOString();
   const file = deckPath(deck.id);
-  const tmp = `${file}.${process.pid}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(deck, null, 2));
-  await fs.rename(tmp, file);
+  const tmp = `${file}.${process.pid}.${crypto.randomBytes(6).toString("hex")}.tmp`;
+  try {
+    await fs.writeFile(tmp, JSON.stringify(deck, null, 2), { mode: 0o600, flag: "wx" });
+    await fs.rename(tmp, file);
+  } finally {
+    await fs.rm(tmp, { force: true }).catch(() => {});
+  }
 }
 
 export async function loadDeck(id: string): Promise<Deck> {
   try {
-    return JSON.parse(await fs.readFile(deckPath(id), "utf8")) as Deck;
+    await ensureDecksDir();
+    const file = deckPath(id);
+    await assertRegularDeckFile(file);
+    const parsed = DeckSchema.parse(JSON.parse(await fs.readFile(file, "utf8")));
+    if (parsed.id !== id) throw new Error(`Presentation id mismatch: requested '${id}', file contains '${parsed.id}'.`);
+    return parsed;
   } catch (e: any) {
     if (e?.code === "ENOENT") {
       throw new Error(`No presentation with id '${id}'. Use list_presentations to see available ids.`);
@@ -55,22 +79,19 @@ export async function loadDeck(id: string): Promise<Deck> {
 }
 
 export async function deleteDeck(id: string): Promise<void> {
+  await ensureDecksDir();
   await fs.rm(deckPath(id), { force: true });
 }
 
 export async function listDecks(): Promise<Deck[]> {
-  let files: string[] = [];
-  try {
-    files = await fs.readdir(decksDir());
-  } catch {
-    return [];
-  }
+  const dir = await ensureDecksDir();
+  const files = await fs.readdir(dir, { withFileTypes: true });
   const decks = await Promise.all(
     files
-      .filter((f) => f.endsWith(".json"))
+      .filter((f) => f.isFile() && f.name.endsWith(".json"))
       .map(async (f) => {
         try {
-          return JSON.parse(await fs.readFile(path.join(decksDir(), f), "utf8")) as Deck;
+          return DeckSchema.parse(JSON.parse(await fs.readFile(path.join(decksDir(), f.name), "utf8")));
         } catch {
           return null;
         }
