@@ -68,7 +68,7 @@ const transition = z
   .describe("Slide transition. Can also be split as 'in-out' via transitionIn/transitionOut on a slide.");
 
 export const BackgroundSchema = z
-  .object({
+  .strictObject({
     color: z.string().describe("Any CSS color, e.g. '#1e1e2e' or 'rgb(0,0,0)'"),
     gradient: z.string().describe("CSS gradient, e.g. 'linear-gradient(135deg, #667eea, #764ba2)'"),
     image: z.string().describe("Image URL or absolute local path"),
@@ -79,20 +79,20 @@ export const BackgroundSchema = z
     video: z.string().describe("Video URL (mp4/webm) played as a background"),
     videoLoop: z.boolean(),
     videoMuted: z.boolean(),
-    iframe: z.string().describe("URL embedded as a full-slide background"),
+    iframe: z.string().describe("URL embedded as a full-slide background (trusted mode only)"),
     interactive: z.boolean().describe("Allow interacting with the background iframe"),
     transition: transition.describe("Background transition for this slide"),
   })
   .partial();
 
-export const FragmentSchema = z.object({
-  content: z.string().describe("Markdown or HTML (inline) content of the fragment"),
+export const FragmentSchema = z.strictObject({
+  content: z.string().describe("Inline Markdown. Raw HTML is escaped in safe mode."),
   effect: z.enum(FRAGMENT_EFFECTS).optional().describe("Fragment animation, default 'fade-in'"),
   index: z.number().int().optional().describe("Explicit reveal order (data-fragment-index)"),
   tag: z.string().optional().describe("Wrapper element, default 'p'"),
 });
 
-export const CodeSchema = z.object({
+export const CodeSchema = z.strictObject({
   code: z.string(),
   language: z.string().optional().describe("highlight.js language, e.g. 'ts', 'python'"),
   lineNumbers: z
@@ -109,7 +109,7 @@ const slideShape = {
   content: z
     .string()
     .optional()
-    .describe("Main body. Markdown by default (format='html' for raw HTML). HTML can be mixed into markdown."),
+    .describe("Main body. Markdown by default. Raw HTML is escaped in safe mode; format='html' requires trusted mode."),
   format: z.enum(["markdown", "html"]).optional(),
   layout: z
     .enum(["default", "title", "section", "center", "columns", "image-left", "image-right", "fullscreen"])
@@ -117,11 +117,11 @@ const slideShape = {
     .describe(
       "title: big hero slide. section: section divider. columns: content of each 'columns' entry side by side. image-left/right: 'image' beside 'content'. fullscreen: content without padding (use with background)."
     ),
-  columns: z.array(z.string()).optional().describe("For layout 'columns': markdown for each column"),
+  columns: z.array(z.string()).max(12).optional().describe("For layout 'columns': markdown for each column"),
   image: z.string().optional().describe("Image URL/path for image-left/image-right layouts"),
   code: CodeSchema.optional().describe("Code block appended after content"),
   component: ComponentSchema.optional().describe("Data-driven designed block: stats, timeline, cards, quote, comparison, steps, chart, diagram"),
-  fragments: z.array(FragmentSchema).optional().describe("Items revealed one by one, appended after content"),
+  fragments: z.array(FragmentSchema).max(200).optional().describe("Items revealed one by one, appended after content"),
   listFragments: z
     .union([z.boolean(), z.enum(FRAGMENT_EFFECTS)])
     .optional()
@@ -141,13 +141,14 @@ const slideShape = {
   autoAnimateId: z.string().optional().describe("Only auto-animate between slides sharing this id"),
   autoAnimateRestart: z.boolean().optional(),
   autoAnimateEasing: z.string().optional(),
-  autoAnimateDuration: z.number().optional().describe("Seconds"),
+  autoAnimateDuration: z.number().min(0).max(60).optional().describe("Seconds"),
   autoAnimateUnmatched: z.boolean().optional(),
-  autoSlide: z.number().int().optional().describe("Advance after N ms on this slide"),
+  autoSlide: z.number().int().min(0).max(600000).optional().describe("Advance after N ms on this slide"),
   duration: z
     .number()
     .int()
     .min(200)
+    .max(60000)
     .optional()
     .describe("Video export: how long (ms) this slide stays on screen before the next step"),
   visibility: z.enum(["hidden", "uncounted"]).optional(),
@@ -193,20 +194,20 @@ export const SettingsShape = {
   slideNumber: z.union([z.boolean(), z.string()]).optional().describe("true, or a format like 'c/t'"),
   center: z.boolean().optional(),
   loop: z.boolean().optional(),
-  autoSlide: z.number().int().optional().describe("Auto-advance every N ms (0 = off)"),
+  autoSlide: z.number().int().min(0).max(600000).optional().describe("Auto-advance every N ms (0 = off)"),
   autoSlideStoppable: z.boolean().optional(),
-  autoAnimateDuration: z.number().optional(),
+  autoAnimateDuration: z.number().min(0).max(60).optional(),
   autoAnimateEasing: z.string().optional(),
-  width: z.number().int().optional().describe("Logical slide width, default 1280"),
-  height: z.number().int().optional().describe("Logical slide height, default 720"),
+  width: z.number().int().min(320).max(4096).optional().describe("Logical slide width, default 1280"),
+  height: z.number().int().min(240).max(4096).optional().describe("Logical slide height, default 720"),
   navigationMode: z.enum(["default", "linear", "grid"]).optional(),
   view: z.enum(["default", "scroll"]).optional().describe("'scroll' turns the deck into a scrollable page"),
   parallaxBackgroundImage: z.string().optional(),
   parallaxBackgroundSize: z.string().optional(),
   pdfSeparateFragments: z.boolean().optional(),
   customCss: z.string().optional().describe("Extra CSS injected into the deck (colors, fonts, custom animations)"),
-  customJs: z.string().optional().describe("Extra JS run after Reveal initializes (the Reveal global is available)"),
-  headHtml: z.string().optional().describe("Extra HTML for <head>, e.g. font links or external scripts like GSAP"),
+  customJs: z.string().optional().describe("Trusted mode only: extra JS run after Reveal initializes"),
+  headHtml: z.string().optional().describe("Trusted mode only: extra HTML for <head>"),
   author: z.string().optional(),
   description: z.string().optional(),
 };
@@ -222,3 +223,12 @@ export interface Deck {
   settings: Settings;
   slides: Slide[];
 }
+
+export const DeckSchema = z.strictObject({
+  id: z.string().regex(/^[a-z0-9-]+$/),
+  title: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  settings: SettingsSchema,
+  slides: z.array(SlideSchema),
+});

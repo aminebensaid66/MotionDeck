@@ -351,7 +351,9 @@ export function componentRuntime(opts: { mermaidSrc?: string; mermaidInline?: st
       ${
         opts.mermaidInline
           ? "resolve();"
-          : `var s = document.createElement('script'); s.src = ${JSON.stringify(opts.mermaidSrc ?? "")}; s.onload = resolve; s.onerror = resolve; document.head.appendChild(s);`
+          : opts.mermaidSrc
+            ? `var s = document.createElement('script'); s.src = ${JSON.stringify(opts.mermaidSrc)}; s.onload = resolve; s.onerror = resolve; document.head.appendChild(s);`
+            : "resolve();"
       }
     }).then(function () {
       if (!window.mermaid) return;
@@ -360,7 +362,7 @@ export function componentRuntime(opts: { mermaidSrc?: string; mermaidInline?: st
       var bg = v('--r-background-color', ${JSON.stringify(opts.dark ? "#111111" : "#ffffff")});
       var accent = v('--rmcp-accent', v('--r-link-color', '#4f8cff'));
       var text = v('--r-main-color', ${JSON.stringify(opts.dark ? "#eeeeee" : "#222222")});
-      window.mermaid.initialize({ startOnLoad: false, theme: 'base', fontFamily: v('--r-main-font', 'sans-serif'),
+      window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', fontFamily: v('--r-main-font', 'sans-serif'),
         themeVariables: { darkMode: ${opts.dark}, fontSize: '22px', background: bg, primaryColor: bg, secondaryColor: bg, tertiaryColor: bg,
           primaryTextColor: text, secondaryTextColor: text, tertiaryTextColor: text, textColor: text, nodeTextColor: text,
           primaryBorderColor: accent, secondaryBorderColor: accent, tertiaryBorderColor: accent, lineColor: accent,

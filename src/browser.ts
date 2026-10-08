@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import path from "node:path";
 import os from "node:os";
+import { browserNoSandboxAllowed, isBrowserRequestAllowed, isTrustedMode } from "./security.js";
 
 function candidateBrowsers(): string[] {
   const env = [process.env.MOTIONDECK_CHROME, process.env.CHROME_PATH, process.env.PUPPETEER_EXECUTABLE_PATH];
@@ -64,22 +65,30 @@ export async function withDeckPage<T>(
     );
   }
   const { default: puppeteer } = await import("puppeteer-core");
-  const browser = await puppeteer.launch({
-    executablePath,
-    headless: true,
-    args: [
-      "--no-sandbox",
-      "--disable-dev-shm-usage",
-      "--allow-file-access-from-files",
-      "--hide-scrollbars",
-      "--autoplay-policy=no-user-gesture-required",
-    ],
-  });
+  const args = [
+    "--disable-dev-shm-usage",
+    "--hide-scrollbars",
+    "--autoplay-policy=no-user-gesture-required",
+    "--disable-background-networking",
+    "--disable-default-apps",
+    "--disable-sync",
+  ];
+  if (browserNoSandboxAllowed()) args.push("--no-sandbox");
+  const browser = await puppeteer.launch({ executablePath, headless: true, args });
   try {
     const page = await browser.newPage();
+    const targetUrl = `${pathToFileURL(htmlFile).href}${opts.query ?? ""}`;
+    if (!isTrustedMode()) {
+      await page.setRequestInterception(true);
+      page.on("request", (request) => {
+        if (isBrowserRequestAllowed(request.url(), targetUrl)) request.continue().catch(() => {});
+        else request.abort("blockedbyclient").catch(() => {});
+      });
+      page.on("popup", (popup) => popup?.close().catch(() => {}));
+    }
     if (opts.width && opts.height) await page.setViewport({ width: opts.width, height: opts.height });
     if (opts.staticMode) await page.evaluateOnNewDocument("window.__rmcpStatic = true");
-    await page.goto(`${pathToFileURL(htmlFile).href}${opts.query ?? ""}`, { waitUntil: "load", timeout: 60_000 });
+    await page.goto(targetUrl, { waitUntil: "load", timeout: 60_000 });
     await page.waitForFunction("window.__revealReady === true", { timeout: 60_000 });
     // Give fonts, highlight and math a moment to settle.
     await page.evaluate("document.fonts ? document.fonts.ready : null");

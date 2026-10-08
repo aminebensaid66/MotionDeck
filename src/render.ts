@@ -6,6 +6,8 @@ import type { BaseSlide, Deck, Slide } from "./schema.js";
 import { MOTION_CSS, LAYOUT_CSS } from "./styles.js";
 import { COMPONENT_CSS, componentRuntime, renderComponent } from "./components.js";
 import { AUTO_MOTION_CSS, PRESET_DEFS, googleFontsLink, presetCss } from "./presets.js";
+import sanitizeHtml from "sanitize-html";
+import { assertSafeCss, assertSafeDeck, builtInCdnAllowed, isTrustedMode, safeCsp, sniffMedia, validateAssetUrl } from "./security.js";
 
 const DARK_THEMES = new Set(["black", "black-contrast", "league", "night", "blood", "moon", "dracula"]);
 const MERMAID_CDN = "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js";
@@ -54,8 +56,52 @@ function protectMath(src: string, fn: (s: string) => string): string {
   return fn(masked).replace(/RMCPMATH(\d+)X/g, (_m, i: string) => escapeHtml(stash[Number(i)]));
 }
 
-const md = (s: string) => protectMath(s, (x) => marked.parse(x, { async: false }) as string);
-const mdInline = (s: string) => protectMath(s, (x) => marked.parseInline(x, { async: false }) as string);
+const SAFE_TAGS = [
+  "a", "abbr", "b", "blockquote", "br", "caption", "code", "col", "colgroup", "dd", "del", "div", "dl", "dt", "em",
+  "figcaption", "figure", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "i", "img", "ins", "kbd", "li", "mark", "ol", "p",
+  "pre", "q", "s", "small", "span", "strong", "sub", "sup", "table", "tbody", "td", "tfoot", "th", "thead", "tr", "u", "ul",
+];
+
+/**
+ * Safe mode: keep layout and motion markup (classes, inline styles, data-id for auto-animate, fragments)
+ * but drop scripts, event handlers, iframes, forms and anything that can load from the network via CSS.
+ */
+function sanitizeFragment(html: string, ctx: Ctx): string {
+  if (isTrustedMode()) return html;
+  return sanitizeHtml(html, {
+    allowedTags: SAFE_TAGS,
+    allowedAttributes: {
+      "*": ["class", "style", "title", "lang", "dir", "role", "aria-*", "data-id", "data-fragment-index", "data-auto-animate-*"],
+      a: ["href", "class", "style", "title"],
+      img: ["src", "alt", "width", "height", "class", "style", "title", "data-id"],
+      code: ["class", "data-line-numbers", "data-trim", "data-noescape"],
+      ol: ["start", "class", "style"],
+      td: ["colspan", "rowspan", "class", "style"],
+      th: ["colspan", "rowspan", "class", "style"],
+    },
+    allowedSchemes: ["https", "mailto"],
+    allowedSchemesByTag: { img: ["https", "data"] },
+    allowProtocolRelative: false,
+    disallowedTagsMode: "discard",
+    transformTags: {
+      "*": (tagName, attribs) => {
+        if (attribs.style) assertSafeCss(attribs.style, `inline style on <${tagName}>`);
+        if (tagName === "img" && attribs.src) {
+          // A missing or non-image file becomes a broken image, which the layout check reports.
+          try {
+            attribs.src = ctx.url(attribs.src);
+          } catch {
+            delete attribs.src;
+          }
+        }
+        return { tagName, attribs };
+      },
+    },
+  });
+}
+
+const md = (s: string, ctx: Ctx) => protectMath(s, (x) => sanitizeFragment(marked.parse(x, { async: false }) as string, ctx));
+const mdInline = (s: string, ctx: Ctx) => protectMath(s, (x) => sanitizeFragment(marked.parseInline(x, { async: false }) as string, ctx));
 
 const MIME: Record<string, string> = {
   ".png": "image/png",
@@ -77,16 +123,22 @@ class Ctx {
   usesMermaid = false;
   sectionBg?: string;
 
-  /** Turn absolute local file paths into data URIs (inline mode) or file:// URLs. */
+  /** Validate assets, then turn local files into data URIs where possible. */
   url(src: string): string {
-    if (/^(https?:|data:|file:|\/\/)/i.test(src) || !path.isAbsolute(src)) return src;
-    if (!existsSync(src)) return src;
-    const mime = MIME[path.extname(src).toLowerCase()];
+    const validated = validateAssetUrl(src);
+    if (/^(https?:|data:|file:|\/\/)/i.test(validated)) return validated;
+    if (isTrustedMode() && !path.isAbsolute(validated)) return validated;
+    const local = path.resolve(validated);
+    if (!existsSync(local)) throw new Error(`Asset does not exist: ${src}`);
+    const mime = MIME[path.extname(local).toLowerCase()] ?? sniffMedia(local);
     if (this.opts.embedLocalImages !== false && this.opts.assets !== "cdn" && mime) {
-      const buf = readFileSync(src);
+      const buf = readFileSync(local);
       if (buf.length < 25 * 1024 * 1024) return `data:${mime};base64,${buf.toString("base64")}`;
     }
-    return "file://" + src.split(path.sep).map(encodeURIComponent).join("/").replace(/^\/?/, "/");
+    if (!isTrustedMode()) {
+      throw new Error(`Local asset is too large or has an unsupported type for safe embedding: ${src}`);
+    }
+    return "file://" + local.split(path.sep).map(encodeURIComponent).join("/").replace(/^\/?/, "/");
   }
 }
 
@@ -100,7 +152,7 @@ function body(text: string | undefined, slide: BaseSlide, ctx: Ctx): string {
   if (!text) return "";
   if (/\$\$|\\\(|\\\[/.test(text)) ctx.usesMath = true;
   if (/```|<code/.test(text)) ctx.usesCode = true;
-  let html = slide.format === "html" ? text : md(text);
+  let html = slide.format === "html" ? sanitizeFragment(text, ctx) : md(text, ctx);
   if (slide.listFragments) {
     const effect = slide.listFragments === true ? "" : ` ${slide.listFragments}`;
     html = html.replace(/<li(\s[^>]*)?>/g, (_m, rest: string | undefined) => {
@@ -157,12 +209,12 @@ function renderSlide(slide: BaseSlide, ctx: Ctx, inner = ""): string {
 
   const parts: string[] = [];
   if (layout === "title") {
-    if (slide.title) parts.push(`<h1>${mdInline(slide.title)}</h1>`);
-    if (slide.subtitle) parts.push(`<p class="subtitle">${mdInline(slide.subtitle)}</p>`);
+    if (slide.title) parts.push(`<h1>${mdInline(slide.title, ctx)}</h1>`);
+    if (slide.subtitle) parts.push(`<p class="subtitle">${mdInline(slide.subtitle, ctx)}</p>`);
     parts.push(body(slide.content, slide, ctx));
   } else {
-    if (slide.title) parts.push(`<h2>${mdInline(slide.title)}</h2>`);
-    if (slide.subtitle) parts.push(`<p class="subtitle">${mdInline(slide.subtitle)}</p>`);
+    if (slide.title) parts.push(`<h2>${mdInline(slide.title, ctx)}</h2>`);
+    if (slide.subtitle) parts.push(`<p class="subtitle">${mdInline(slide.subtitle, ctx)}</p>`);
     if (layout === "columns" && slide.columns?.length) {
       parts.push(body(slide.content, slide, ctx));
       parts.push(
@@ -193,17 +245,20 @@ function renderSlide(slide: BaseSlide, ctx: Ctx, inner = ""): string {
   if (slide.component) {
     ctx.usesComponents = true;
     if (slide.component.type === "diagram") ctx.usesMermaid = true;
-    parts.push(renderComponent(slide.component, mdInline));
+    parts.push(renderComponent(slide.component, (text) => mdInline(text, ctx)));
   }
 
   for (const f of slide.fragments ?? []) {
-    const tag = /^[a-z][a-z0-9-]*$/i.test(f.tag ?? "") ? f.tag! : "p";
+    const requestedTag = f.tag ?? "p";
+    const tag = isTrustedMode()
+      ? (/^[a-z][a-z0-9-]*$/i.test(requestedTag) ? requestedTag : "p")
+      : (/^(?:p|div|span|li|blockquote|strong|em|small)$/i.test(requestedTag) ? requestedTag : "p");
     const effect = f.effect && f.effect !== "fade-in" ? ` ${f.effect}` : "";
-    const content = slide.format === "html" ? f.content : mdInline(f.content);
+    const content = slide.format === "html" ? sanitizeFragment(f.content, ctx) : mdInline(f.content, ctx);
     parts.push(`<${tag} class="fragment${effect}"${attr("data-fragment-index", f.index)}>${content}</${tag}>`);
   }
 
-  if (slide.notes) parts.push(`<aside class="notes">${md(slide.notes)}</aside>`);
+  if (slide.notes) parts.push(`<aside class="notes">${md(slide.notes, ctx)}</aside>`);
 
   return `<section${a.join("")}>\n${inner}${parts.filter(Boolean).join("\n")}\n</section>`;
 }
@@ -224,6 +279,10 @@ const safeScript = (js: string) => js.replace(/<\/script/gi, "<\\/script");
 const safeStyle = (css: string) => css.replace(/<\/style/gi, "<\\/style");
 
 export async function renderDeck(deck: Deck, opts: RenderOptions = {}): Promise<string> {
+  assertSafeDeck(deck);
+  if (opts.assets === "cdn" && !builtInCdnAllowed()) {
+    throw new Error("CDN asset mode is disabled in safe mode. Set MOTIONDECK_ALLOW_BUILTIN_CDN=1 or use inline assets.");
+  }
   const ctx = new Ctx(opts);
   const s = deck.settings;
   const preset = s.preset ? PRESET_DEFS[s.preset] : undefined;
@@ -317,8 +376,16 @@ export async function renderDeck(deck: Deck, opts: RenderOptions = {}): Promise<
     const local = process.env.MOTIONDECK_MERMAID;
     const inlineMermaid = ctx.usesMermaid && local && existsSync(local) && opts.assets !== "cdn";
     if (inlineMermaid) mermaidTag = `<script>\n${safeScript(readFileSync(local!, "utf8"))}\n</script>`;
-    runtime = componentRuntime({ dark, mermaidSrc: MERMAID_CDN, mermaidInline: inlineMermaid ? "yes" : undefined });
+    const allowRemoteMermaid = isTrustedMode() || builtInCdnAllowed();
+    runtime = componentRuntime({
+      dark,
+      mermaidSrc: ctx.usesMermaid && allowRemoteMermaid ? MERMAID_CDN : undefined,
+      mermaidInline: inlineMermaid ? "yes" : undefined,
+    });
   }
+
+  const useFonts = fonts.length > 0 && (isTrustedMode() || builtInCdnAllowed());
+  const csp = safeCsp({ assets: opts.assets, needsMermaid: ctx.usesMermaid, needsMath: ctx.usesMath, usesFonts: useFonts });
 
   return `<!doctype html>
 <html lang="en">
@@ -326,11 +393,13 @@ export async function renderDeck(deck: Deck, opts: RenderOptions = {}): Promise<
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="generator" content="motiondeck (reveal.js ${revealVersion})">
+${csp ? `<meta http-equiv="Content-Security-Policy" content="${escapeHtml(csp)}">` : ""}
+<meta name="referrer" content="no-referrer">
 <title>${escapeHtml(deck.title)}</title>
 ${s.author ? `<meta name="author" content="${escapeHtml(s.author)}">` : ""}
 ${s.description ? `<meta name="description" content="${escapeHtml(s.description)}">` : ""}
 ${styleTags}
-${googleFontsLink(fonts)}
+${useFonts ? googleFontsLink(fonts) : ""}
 <style>
 ${LAYOUT_CSS}
 ${MOTION_CSS}
@@ -352,7 +421,7 @@ ${slidesHtml}
 ${scriptTags}
 ${mermaidTag}
 <script>
-Reveal.initialize(Object.assign(${JSON.stringify(config)}, { plugins: [${pluginExpr}] })).then(function () {
+Reveal.initialize(Object.assign(${safeScript(JSON.stringify(config))}, { plugins: [${pluginExpr}] })).then(function () {
 ${runtime}
   window.__revealReady = true;
 ${s.customJs ? safeScript(s.customJs) : ""}
